@@ -1,0 +1,293 @@
+---
+description: Rust Ecosystem Library Recommendation Guide
+globs: 
+alwaysApply: false
+---
+# Rust Ecosystem Library Recommendation Guide
+
+## Command Line Application Development
+
+### Argument Parsing
+- **clap** - Type-safe CLI argument parsing with powerful features, supports subcommands, auto-completion, etc.
+- **structopt** - Procedural macro based on clap for defining command line interfaces through structs (merged into clap v3+)
+- **argh** - Lightweight argument parsing library with fast compilation
+- **lexopt** - Minimal argument parsing library suitable for simple scenarios
+
+### Terminal Interaction
+- **dialoguer** - Interactive terminal user interfaces, supports confirmation, selection, input, etc.
+- **indicatif** - Progress bars and loading indicators
+- **console** - Terminal control and colored output
+- **termion** - Low-level terminal control library
+- **crossterm** - Cross-platform terminal operation library
+
+### Terminal UI
+- **tui** - Build rich terminal user interfaces
+- **cursive** - TUI library based on ncurses
+- **termwiz** - Terminal rendering and input handling
+
+## Web Development
+
+### Web Frameworks
+- **axum** - Modern async web framework based on tokio, type-safe
+- **actix-web** - High-performance async web framework with rich features
+- **warp** - Lightweight async web framework based on filters
+- **salvo** - Simple and efficient async web framework with middleware support
+- **rocket** - Easy-to-use web framework emphasizing safety and speed
+- **tide** - Simple async web framework
+
+### HTTP Clients
+- **reqwest** - Easy-to-use HTTP client library with async support
+- **hyper** - Low-level HTTP library, high performance
+- **ureq** - Simple synchronous HTTP client with no runtime dependencies
+
+### JSON Processing
+- **serde_json** - JSON serialization/deserialization, integrates with serde
+- **simd-json** - High-performance JSON parser
+- **sonic_rs** - Ultra-fast JSON library
+
+### WebSocket
+- **tokio-tungstenite** - Async WebSocket implementation
+- **tungstenite** - WebSocket protocol implementation
+
+## Database Operations
+
+### ORM and Query Builders
+- **diesel** - Type-safe ORM with compile-time query validation
+- **sqlx** - Async SQL library with compile-time query checking
+- **sea-orm** - Async ORM supporting multiple databases
+- **prisma-client-rust** - Rust client for Prisma
+
+### Database Drivers
+- **tokio-postgres** - PostgreSQL async driver
+- **mysql_async** - MySQL async driver
+- **rusqlite** - SQLite bindings
+
+### In-Memory Databases
+- **sled** - Embedded database
+- **redb** - Embedded key-value store
+
+## Serialization and Deserialization
+
+### General Serialization Frameworks
+- **serde** - Powerful serialization framework supporting multiple formats
+- **bincode** - Binary serialization format
+- **rmp-serde** - MessagePack serialization
+
+### Specific Formats
+- **toml** - TOML format parsing
+- **serde_yaml** - YAML serialization
+- **quick-xml** - Fast XML parsing
+- **csv** - CSV file processing
+
+## Async Programming
+
+### Async Runtimes
+- **tokio** - Feature-complete async runtime
+- **async-std** - Standard library style async runtime
+- **smol** - Lightweight async runtime
+
+### Async Tools
+- **futures** - Fundamental tools for async programming
+- **async-trait** - Async trait support
+- **async-stream** - Async stream macros
+- **pin-project** - Pin projection macros
+
+## Network Programming
+
+### Low-Level Networking
+- **socket2** - Cross-platform socket API
+- **mio** - Low-level async I/O
+- **nix** - Unix system call bindings
+
+### Network Protocols
+- **trust-dns** - DNS client and server
+- **quinn** - QUIC protocol implementation
+- **libp2p** - Peer-to-peer networking protocol stack
+
+## Cryptography and Security
+
+### Cryptography
+- **ring** - Safe and fast cryptography library
+- **rustls** - Pure Rust TLS implementation
+- **sodiumoxide** - libsodium bindings
+- **sha2** - SHA-2 hash algorithms
+- **aes** - AES encryption algorithms
+
+### Authentication and Authorization
+- **jsonwebtoken** - JWT processing
+- **oauth2** - OAuth2 client
+- **argon2** - Password hashing
+
+## Logging
+
+### Logging Frameworks
+- **log** - Standard logging facade
+- **tracing** - Structured logging and distributed tracing
+- **env_logger** - Simple logging implementation
+- **fern** - Flexible logging configuration
+- **slog** - Structured logging
+
+## Testing Tools
+
+### Testing Frameworks
+- **proptest** - Property testing framework
+- **quickcheck** - Random testing
+- **criterion** - Benchmarking framework
+- **mockall** - Mock object library
+- **wiremock** - HTTP service mocking
+
+### Testing Utilities
+- **tempfile** - Temporary files and directories
+- **assert_cmd** - Command line program testing
+- **insta** - Snapshot testing
+
+## Parser Development
+
+### Parser Combinators
+- **nom** - Parser combinator library
+- **pest** - PEG parser generator
+- **combine** - Parser combinators
+- **chumsky** - Friendly parser library
+
+### Lexical Analysis
+- **logos** - High-performance lexer generator
+
+## Image Processing
+
+### Image Operations
+- **image** - Image processing library supporting multiple formats
+- **imageproc** - Image processing algorithms
+- **photon** - High-performance image processing
+
+### Graphics Rendering
+- **wgpu** - Modern graphics API abstraction
+- **pixels** - 2D pixel buffer rendering
+- **minifb** - Simple window and pixel buffer
+
+## File Operations
+
+### File System
+- **walkdir** - Recursive directory traversal
+- **glob** - Filename pattern matching
+- **notify** - File system event monitoring
+- **tempfile** - Temporary file handling
+
+### File Formats
+- **zip** - ZIP file processing
+- **tar** - TAR archive processing
+- **flate2** - Compression algorithms
+
+## Mathematical Computing
+
+### Numerical Computing
+- **num** - Numeric types and traits
+- **nalgebra** - Linear algebra library
+- **ndarray** - N-dimensional arrays
+- **statrs** - Statistical functions
+
+### Random Numbers
+- **rand** - Random number generation
+- **fastrand** - Fast random number generator
+
+## GUI Development
+
+### Native GUI
+- **egui** - Immediate mode GUI, easy to integrate
+- **iced** - Cross-platform GUI library based on Elm architecture
+- **slint** - Modern GUI toolkit with multiple language bindings
+- **tauri** - Build desktop applications with web technologies
+- **druid** - Data-driven GUI toolkit
+- **fltk** - FLTK GUI bindings
+
+### Web Technologies
+- **yew** - Modern Rust frontend framework
+- **leptos** - Full-stack Rust web framework
+- **dioxus** - Cross-platform GUI library
+
+## Systems Programming
+
+### System Interfaces
+- **libc** - C standard library bindings
+- **winapi** - Windows API bindings
+- **nix** - Unix system calls
+- **sysinfo** - System information retrieval
+
+### Process Management
+- **subprocess** - Child process management
+- **tokio-process** - Async process operations
+
+## Error Handling
+
+### Error Libraries
+- **anyhow** - Flexible error handling
+- **thiserror** - Custom error type macros
+- **eyre** - Human-friendly error reporting
+- **miette** - Beautiful error diagnostics
+
+## Configuration Management
+
+### Configuration Parsing
+- **config** - Layered configuration management
+- **figment** - Configuration library supporting multiple sources
+- **clap** - Can also be used for configuration management
+
+## Time Handling
+
+### Date and Time
+- **chrono** - Date and time processing library
+- **time** - Type-safe time library
+- **humantime** - Human-friendly time parsing
+
+## Text Processing
+
+### Regular Expressions
+- **regex** - Regular expression engine
+- **fancy-regex** - Regular expressions with more features
+
+### String Processing
+- **unicode-segmentation** - Unicode text segmentation
+- **edit-distance** - Edit distance algorithms
+
+## Concurrent Programming
+
+### Concurrency Primitives
+- **crossbeam** - Concurrency programming toolkit
+- **rayon** - Data parallelism library
+- **parking_lot** - High-performance synchronization primitives
+- **dashmap** - Concurrent hash map
+
+### Message Passing
+- **crossbeam-channel** - Multi-producer multi-consumer channels
+- **flume** - Fast multi-producer multi-consumer channels
+
+### Thread Pools
+- **rayon** - Data parallelism and work-stealing thread pool
+- **threadpool** - Simple thread pool implementation
+- **tokio** - Async task scheduling and thread pool
+
+## Memory Management
+
+### Smart Pointers
+- **arc-swap** - Atomic reference count swapping
+- **once_cell** - Lazy static variables
+- **lazy_static** - Lazy static initialization
+
+## Development Tools
+
+### Code Generation
+- **proc-macro2** - Procedural macro tools
+- **quote** - Code generation macros
+- **syn** - Rust syntax parsing
+
+### Version Management
+- **semver** - Semantic version handling
+- **git2** - Git library bindings
+
+## Plugin Systems
+
+### Plugin Runtimes
+- **extism** - Universal plugin system supporting plugins in multiple languages
+- **wasmtime** - WebAssembly runtime for loading WebAssembly plugins
+- **wasmer** - High-performance WebAssembly runtime
+
+- **abi_stable** - Library for creating stable ABIs, supports dynamic library plugins

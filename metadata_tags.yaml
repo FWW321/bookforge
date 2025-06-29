@@ -1,0 +1,53 @@
+# 元数据标签配置文件
+# 定义 EPUB 元数据解析时使用的标签映射
+# 每个配置项可以包含多个可能的标签名称
+
+title:
+  tags:
+  - title
+  description: 书籍标题
+creator:
+  tags:
+  - creator
+  - author
+  description: 作者/创建者信息
+contributor:
+  tags:
+  - contributor
+  description: 贡献者信息（编辑、插图等）
+language:
+  tags:
+  - language
+  description: 书籍语言
+identifier:
+  tags:
+  - identifier
+  description: 书籍标识符（ISBN、UUID等）
+publisher:
+  tags:
+  - publisher
+  description: 出版社信息
+date:
+  tags:
+  - date
+  description: 出版日期
+description:
+  tags:
+  - description
+  description: 书籍描述/简介
+subject:
+  tags:
+  - subject
+  description: 书籍主题/分类
+rights:
+  tags:
+  - rights
+  description: 版权信息
+cover:
+  tags:
+  - cover
+  description: 封面图片信息
+modified:
+  tags:
+  - dcterms:modified
+  description: 最后修改时间

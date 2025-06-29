@@ -1,0 +1,91 @@
+---
+description: Rust Design Patterns Guide
+globs: 
+alwaysApply: false
+---
+# Rust Design Patterns Guide
+
+## Rust-Specific Patterns
+
+### Newtype Pattern
+- **Type Safety Enhancement**: Use newtypes to enhance type safety and prevent type confusion
+- **Domain Modeling**: Model business concepts through newtypes
+- **Unit Type Encapsulation**: Encapsulate primitive types with specific meanings, such as IDs, emails, passwords, etc.
+- **Zero-Cost Abstraction**: Implement zero-cost type abstraction with compile-time type checking
+- **Validation Logic Integration**: Integrate validation logic in newtype constructors
+- **Method Extension**: Add specific methods and behaviors to newtypes
+
+### Typestate Pattern
+- **Compile-Time State Validation**: Validate state transitions at compile time, preventing invalid operations
+- **API Usage Safety**: Ensure correct API usage, enforce proper calling sequences
+- **Resource Lifecycle Management**: Manage resource lifecycles through the type system
+- **State Machine Modeling**: Use type parameters to represent different states
+- **Transition Method Design**: Provide specialized methods for each state transition
+- **Phantom Data Application**: Use PhantomData to store state information without memory overhead
+
+### Interior Mutability Pattern
+- **RefCell Application**: Use `RefCell` to implement interior mutability
+- **Cell Optimization**: Use `Cell` optimization for `Copy` types
+- **Atomic Type Usage**: Use atomic types for lock-free mutability
+
+## Creational Patterns
+
+### Builder Pattern
+- **Complex Object Construction**: Use builder pattern to construct complex objects with multiple parameters
+- **Optional Parameter Handling**: Elegantly handle optional parameters and default values through builder pattern
+- **Type-Safe Construction**: Use the type system to ensure correctness and completeness of construction process
+- **Fluent Interface Design**: Provide chainable method calls for fluent interfaces
+- **Parameter Validation Integration**: Integrate parameter validation logic during construction
+- **Default Value Management**: Provide reasonable default values for optional parameters
+- **Construction Error Handling**: Return clear error messages when construction fails
+
+## Structural Patterns
+
+### Adapter Pattern
+- **Interface Adaptation**: Adapt incompatible interfaces
+- **Third-Party Library Integration**: Adapt third-party library interfaces
+- **Version Compatibility**: Handle API version compatibility issues
+
+### Decorator Pattern
+- **Feature Enhancement**: Enhance object functionality through decorators
+- **Cross-Cutting Concerns**: Handle cross-cutting concerns like logging, caching, etc.
+
+## Behavioral Patterns
+
+### Strategy Pattern
+- **Algorithm Family Definition**: Define interchangeable algorithm families, use traits to define unified interfaces
+- **Runtime Switching**: Support runtime algorithm switching, improve system flexibility
+- **Algorithm Encapsulation**: Encapsulate algorithm implementations in independent structs
+- **Context Separation**: Separate algorithm selection logic from concrete implementations
+- **Default Strategy Provision**: Provide reasonable default strategies for common scenarios
+- **Strategy Combination Support**: Support combination of multiple strategies
+- **Configuration-Driven Selection**: Select strategies through configuration files or environment variables
+
+### Observer Pattern
+- **Event Notification Mechanism**: Implement event notification systems
+- **Weak Reference Usage**: Use weak references to avoid circular dependencies
+- **Async Notification**: Support asynchronous event notification
+
+### State Pattern
+- **State Machine Implementation**: Implement finite state machines
+- **Type-Level States**: Use the type system to represent states
+- **State Transition Validation**: Validate the legality of state transitions
+
+## Pattern Composition Strategies
+
+### Pattern Collaboration Design
+- **Pattern Responsibility Separation**: Clearly define responsibility boundaries of different patterns
+- **Interface Consistency**: Maintain consistency across pattern interfaces
+- **Unified Error Handling**: Unify error handling across different patterns
+
+### Anti-Pattern Recognition
+- **Ownership Anti-Patterns**: Recognize and avoid ownership usage anti-patterns
+- **Lifetime Anti-Patterns**: Avoid complex lifetime dependencies
+- **Performance Anti-Patterns**: Recognize common performance anti-patterns
+- **Concurrency Anti-Patterns**: Avoid anti-patterns in concurrent programming
+
+### Testing Pattern Strategies
+- **Pattern Unit Testing**: Write unit tests for design patterns
+- **Integration Test Design**: Design integration tests for pattern collaboration
+
+- **Mock Object Usage**: Use mock objects in testing 

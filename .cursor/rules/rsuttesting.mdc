@@ -1,0 +1,157 @@
+---
+description: Rust Testing Strategy and Practice Guide
+globs: 
+alwaysApply: false
+---
+# Rust Testing Strategy and Practice Guide
+
+## Unit Testing Standards
+
+### Test Coverage Requirements
+- **Critical Function Coverage**: Ensure critical functions have adequate test coverage
+- **Branch Coverage**: Test all major code branches and conditional paths
+- **Boundary Testing**: Focus on testing boundary values and critical conditions
+- **Exception Paths**: Cover error handling and exception scenarios
+
+### Test Independence Principles
+- **Isolated Execution**: Each test should run independently, not depending on other tests
+- **State Cleanup**: Properly set up and clean up test state before and after tests
+- **Resource Management**: Ensure tests don't leak resources or affect system state
+- **Parallel Safety**: Tests should be able to run safely in parallel
+
+### Assertions and Verification
+- **Clear Assertions**: Use explicit assertions with clear failure messages
+- **Multiple Verification**: Verify multiple properties of complex objects
+- **Custom Assertions**: Write custom assertion helpers for complex scenarios
+- **Error Messages**: Provide meaningful error messages to aid debugging
+
+### Test Data Management
+- **Test Fixtures**: Use appropriate test fixtures to prepare test data
+- **Data Isolation**: Ensure test data doesn't interfere with each other
+- **Randomized Testing**: Use property testing and randomized data for verification
+- **Boundary Conditions**: Specifically test boundary values and exceptional situations
+
+### Test Naming and Organization
+- **Descriptive Naming**: Use descriptive test function names that clearly explain test intent
+- **Grouping Organization**: Use modules or attributes to group related tests
+- **Documentation**: Provide comments for complex test scenarios
+- **Tag Management**: Use tags to manage different types of tests (unit, integration, performance, etc.)
+
+## Integration Testing Strategy
+
+### End-to-End Test Design
+- **User Scenarios**: Test complete user scenarios and workflows
+- **Real Environment**: Test under conditions close to production environment
+- **Data Flow Validation**: Verify data flow throughout the system
+- **External Dependencies**: Test integration points with external systems
+
+### Interface Contract Testing
+- **API Contracts**: Verify interface contracts between modules
+- **Protocol Testing**: Test network protocols and communication interfaces
+- **Data Formats**: Verify data serialization and deserialization
+- **Version Compatibility**: Test forward and backward compatibility of APIs
+
+### Environment Management
+- **Environment Isolation**: Ensure consistency and repeatability of test environments
+- **Configuration Management**: Manage configurations for different test environments
+- **Dependency Mocking**: Appropriately use mock objects to replace external dependencies
+- **Cleanup Strategy**: Thoroughly clean up test environment after tests
+
+### Test Database
+- **Transaction Isolation**: Use database transactions to isolate tests
+- **Data Migration**: Test database migration and upgrade processes
+- **Performance Testing**: Verify database query performance
+- **Concurrency Testing**: Test database concurrent access scenarios
+
+## Benchmarking Guidelines
+
+### Performance Baseline Establishment
+- **Baseline Establishment**: Establish performance baselines and monitor performance changes
+- **Regression Detection**: Automatically detect performance regressions
+- **Historical Tracking**: Track historical trends of performance metrics
+- **Threshold Setting**: Set reasonable performance warning and failure thresholds
+
+### Testing Methodology
+- **Statistical Significance**: Run sufficient iterations to obtain statistically significant results
+- **Warm-up Processing**: Perform appropriate warm-up to obtain stable results
+- **Environment Control**: Control test environment variables to ensure repeatable results
+- **Metric Selection**: Choose appropriate performance metrics for measurement
+
+### Bottleneck Analysis
+- **Bottleneck Identification**: Identify performance bottlenecks and optimize specifically
+- **Layered Analysis**: Analyze performance issues from different layers
+- **Tool Usage**: Use performance analysis tools to assist diagnosis
+- **Optimization Verification**: Verify the effectiveness of optimization measures
+
+### Resource Monitoring
+- **Memory Usage**: Monitor memory allocation and usage patterns
+- **CPU Utilization**: Measure CPU usage efficiency
+- **IO Performance**: Monitor disk and network IO performance
+- **Concurrency Performance**: Test performance in multi-threaded and async scenarios
+
+## Documentation Testing Requirements
+
+### Example Code Verification
+- **Compilation Verification**: Ensure code examples in documentation can compile and run
+- **Output Verification**: Verify the output results of example code
+- **Error Handling**: Show correct error handling patterns
+- **Version Synchronization**: Keep documentation examples synchronized with code versions
+
+### API Usage Demonstration
+- **Typical Usage**: Show typical API usage patterns through examples
+- **Best Practices**: Demonstrate best practices in documentation
+- **Common Pitfalls**: Explain common usage errors and precautions
+- **Advanced Usage**: Provide examples for advanced usage scenarios
+
+### Documentation Maintenance
+- **Automated Testing**: Integrate documentation testing into CI/CD pipeline
+- **Regular Review**: Regularly review and update documentation examples
+- **Feedback Collection**: Collect user feedback to improve documentation quality
+- **Multi-Version Support**: Maintain corresponding documentation for different versions
+
+## Test Automation and CI/CD
+
+### Continuous Integration Strategy
+- **Automated Execution**: Automatically execute all tests in CI/CD pipeline
+- **Quick Feedback**: Provide rapid test feedback loops
+- **Layered Testing**: Organize CI/CD process by test layers
+- **Parallel Execution**: Use parallel execution to improve test efficiency
+
+### Test Classification Management
+- **Smoke Testing**: Quick smoke tests to verify basic functionality
+- **Regression Testing**: Comprehensive regression test suites
+- **Nightly Testing**: Time-consuming comprehensive tests
+- **Release Testing**: Complete test validation before release
+
+### Quality Gates
+- **Coverage Requirements**: Set minimum requirements for code coverage
+- **Performance Standards**: Establish passing standards for performance tests
+- **Security Checks**: Integrate security testing and vulnerability scanning
+- **Code Quality**: Use static analysis tools to ensure code quality
+
+## Testing Tools and Frameworks
+
+### Unit Testing Tools
+- **Built-in Test Framework**: Use Rust's built-in testing framework
+- **Assertion Libraries**: Choose appropriate assertion libraries to enhance test expressiveness
+- **Parameterized Testing**: Use parameterized testing to reduce duplicate code
+- **Property Testing**: Use proptest and other tools for property testing
+
+### Mocking and Stubs
+- **Mock Objects**: Create and use mock objects to isolate dependencies
+- **Test Doubles**: Use test doubles to simulate external services
+- **Dependency Injection**: Simplify testing through dependency injection
+- **Contract Testing**: Use contract testing to verify service interactions
+
+### Performance Testing Tools
+- **Benchmark Framework**: Use criterion and other benchmark frameworks
+- **Performance Profilers**: Integrate performance analysis tools
+- **Load Testing**: Use load testing tools to verify system capacity
+- **Monitoring Integration**: Integrate with monitoring systems to collect performance data
+
+### Testing Utilities
+- **Test Data Generation**: Use tools to generate test data
+- **Database Testing**: Specialized database testing tools
+- **Containerized Testing**: Use container technology to isolate test environments
+
+- **Cloud Testing**: Utilize cloud resources for large-scale testing 
