@@ -649,19 +649,50 @@ impl Epub {
     
     /// 检查文件是否存在
     fn file_exists(&self, filename: &str) -> bool {
+        // 清理文件路径，去掉锚点和查询参数
+        let clean_path = self.clean_file_path(filename);
+        
         if let Ok(mut archive) = self.archive.lock() {
-            archive.by_name(filename).is_ok()
+            archive.by_name(&clean_path).is_ok()
         } else {
             false
         }
     }
     
+    /// 去掉URL中的锚点和查询参数部分
+    /// 
+    /// # 参数
+    /// * `path` - 文件路径，可能包含锚点（#fragment）或查询参数
+    /// 
+    /// # 返回值
+    /// * `String` - 清理后的文件路径
+    fn clean_file_path(&self, path: &str) -> String {
+        // 去掉锚点部分（#之后的内容）
+        let without_fragment = if let Some(hash_pos) = path.find('#') {
+            &path[..hash_pos]
+        } else {
+            path
+        };
+        
+        // 去掉查询参数（?之后的内容）
+        let without_query = if let Some(query_pos) = without_fragment.find('?') {
+            &without_fragment[..query_pos]
+        } else {
+            without_fragment
+        };
+        
+        without_query.to_string()
+    }
+    
     /// 读取文本文件
     fn read_file(&self, filename: &str) -> Result<String> {
+        // 清理文件路径，去掉锚点和查询参数
+        let clean_path = self.clean_file_path(filename);
+        
         let mut archive = self.archive.lock()
             .map_err(|_| EpubError::InternalError("无法获取文件归档锁".to_string()))?;
         
-        let mut file = archive.by_name(filename)?;
+        let mut file = archive.by_name(&clean_path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
         Ok(content)
@@ -669,10 +700,13 @@ impl Epub {
     
     /// 读取二进制文件
     fn read_binary_file(&self, filename: &str) -> Result<Vec<u8>> {
+        // 清理文件路径，去掉锚点和查询参数
+        let clean_path = self.clean_file_path(filename);
+        
         let mut archive = self.archive.lock()
             .map_err(|_| EpubError::InternalError("无法获取文件归档锁".to_string()))?;
         
-        let mut file = archive.by_name(filename)?;
+        let mut file = archive.by_name(&clean_path)?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
         Ok(buffer)
