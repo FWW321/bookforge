@@ -2,10 +2,8 @@
 //! 
 //! 提供EPUB元数据的结构定义和处理功能。
 
-use crate::epub::error::Result;
 use crate::epub::opf::config::MetadataTagConfigs;
 use std::collections::HashMap;
-use std::path::Path;
 
 /// 元数据值枚举，表示不同类型的元数据
 #[derive(Debug, Clone)]
@@ -34,6 +32,17 @@ pub enum MetaValue {
         /// 标签内容
         content: String,
     },
+    /// 基于refines属性的meta标签，如 <meta refines="#creator" property="role">aut</meta>
+    RefinesBased {
+        /// 被精化的元素ID（不包含#前缀）
+        refines_id: String,
+        /// property属性值（如role、file-as、display-seq等）
+        property: String,
+        /// 标签内容
+        content: String,
+        /// scheme属性（可选，如marc:relators）
+        scheme: Option<String>,
+    },
 }
 
 /// 创建者信息(作者、编辑者等)
@@ -43,8 +52,10 @@ pub struct Creator {
     pub name: String,
     /// 角色(如author、editor等)
     pub role: Option<String>,
-    /// 排序用的姓名
-    pub file_as: Option<String>,
+    /// 显示顺序
+    pub display_seq: Option<u32>,
+    /// 元素ID（用于关联refines元数据）
+    pub id: Option<String>,
 }
 
 /// 标识符信息
@@ -63,69 +74,19 @@ pub struct Identifier {
 pub struct Metadata {
     /// 原始元数据映射：key为标签名（如"dc:title", "cover", "dcterms:modified"），value为元数据值列表
     raw_metadata: HashMap<String, Vec<MetadataValue>>,
+    /// 关联元数据映射：key为被精化的元素ID，value为精化信息列表
+    refines_metadata: HashMap<String, Vec<MetaValue>>,
     /// 元数据标签配置，用于查找对应的元数据
     tag_configs: MetadataTagConfigs,
 }
 
 impl Metadata {
     /// 创建新的元数据实例
-    pub fn new(config_path: Option<&str>) -> Self {
-        let tag_configs = match config_path {
-            Some(path) => MetadataTagConfigs::load_or_default(path),
-            None => MetadataTagConfigs::default_config(),
-        };
+    pub fn new() -> Self {
         Self {
             raw_metadata: HashMap::new(),
-            tag_configs,
-        }
-    }
-
-    /// 使用配置文件创建新的元数据实例
-    /// 
-    /// # 参数
-    /// 
-    /// * `config_path` - 配置文件路径
-    /// 
-    /// # 返回值
-    /// 
-    /// * `Result<Self>` - 创建成功返回实例，失败返回错误
-    /// 
-    /// # 示例
-    /// 
-    /// ```rust
-    /// use bookforge::epub::opf::Metadata;
-    /// let metadata = Metadata::with_config("metadata_tags.yaml")?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    pub fn with_config<P: AsRef<Path>>(config_path: P) -> Result<Self> {
-        let tag_configs = MetadataTagConfigs::from_file(config_path)?;
-        Ok(Self {
-            raw_metadata: HashMap::new(),
-            tag_configs,
-        })
-    }
-
-    /// 使用配置文件创建新的元数据实例，如果配置文件不存在则先生成配置文件再加载
-    /// 
-    /// # 参数
-    /// 
-    /// * `config_path` - 配置文件路径
-    /// 
-    /// # 返回值
-    /// 
-    /// * `Self` - 元数据实例
-    /// 
-    /// # 示例
-    /// 
-    /// ```rust
-    /// use bookforge::epub::opf::Metadata;
-    /// let metadata = Metadata::with_config_or_default("metadata_tags.yaml");
-    /// ```
-    pub fn with_config_or_default<P: AsRef<Path>>(config_path: P) -> Self {
-        let tag_configs = MetadataTagConfigs::load_or_default(config_path);
-        Self {
-            raw_metadata: HashMap::new(),
-            tag_configs,
+            refines_metadata: HashMap::new(),
+            tag_configs: MetadataTagConfigs::new(),
         }
     }
 
@@ -154,6 +115,28 @@ impl Metadata {
             .entry(property)
             .or_insert_with(Vec::new)
             .push(metadata_value);
+    }
+
+    /// 添加基于refines的meta元数据
+    pub fn add_meta_refines_based(&mut self, refines_id: String, property: String, content: String, scheme: Option<String>) {
+        let meta_value = MetaValue::RefinesBased {
+            refines_id: refines_id.clone(),
+            property,
+            content,
+            scheme,
+        };
+        
+        // 同时存储在两个地方：一个用于原始数据，一个用于关联查找
+        let metadata_value = MetadataValue::Meta(meta_value.clone());
+        self.raw_metadata
+            .entry(format!("refines-{}", refines_id))
+            .or_insert_with(Vec::new)
+            .push(metadata_value);
+            
+        self.refines_metadata
+            .entry(refines_id)
+            .or_insert_with(Vec::new)
+            .push(meta_value);
     }
 
     /// 根据标签列表查找元数据值
@@ -259,9 +242,9 @@ impl Metadata {
             .and_then(|v| self.extract_content(v))
     }
 
-    /// 获取自定义元数据
-    pub fn custom(&self) -> HashMap<String, String> {
-        let mut custom = HashMap::new();
+    /// 获取其他元数据
+    pub fn other(&self) -> HashMap<String, String> {
+        let mut other = HashMap::new();
         let known_tags: Vec<String> = [
             &self.tag_configs.title.tags,
             &self.tag_configs.creator.tags,
@@ -278,15 +261,15 @@ impl Metadata {
         ].iter().flat_map(|v| v.iter()).cloned().collect();
 
         for (tag, values) in &self.raw_metadata {
-            if !known_tags.contains(tag) {
+            if !known_tags.contains(tag) && !tag.starts_with("refines-") {
                 if let Some(value) = values.first() {
                     if let Some(content) = self.extract_content(value) {
-                        custom.insert(tag.clone(), content);
+                        other.insert(tag.clone(), content);
                     }
                 }
             }
         }
-        custom
+        other
     }
 
     /// 从元数据值中提取内容
@@ -296,27 +279,61 @@ impl Metadata {
             MetadataValue::Meta(meta) => match meta {
                 MetaValue::NameBased { content } => Some(content.clone()),
                 MetaValue::PropertyBased { content } => Some(content.clone()),
+                MetaValue::RefinesBased { content, .. } => Some(content.clone()),
             },
         }
     }
 
-    /// 从元数据值中提取创建者信息
+    /// 从元数据值中提取创建者信息（支持EPUB3的refines关联）
     fn extract_creator(&self, value: &MetadataValue) -> Option<Creator> {
         match value {
-            MetadataValue::DublinCore { value, attributes } => Some(Creator {
-                name: value.clone(),
-                role: attributes.get("role").cloned(),
-                file_as: attributes.get("file-as").cloned(),
-            }),
+            MetadataValue::DublinCore { value, attributes } => {
+                let mut creator = Creator {
+                    name: value.clone(),
+                    role: attributes.get("role").cloned(),
+                    display_seq: None,
+                    id: attributes.get("id").cloned(),
+                };
+
+                // 如果有ID，查找相关的refines元数据
+                if let Some(id) = &creator.id {
+                    if let Some(refines_list) = self.refines_metadata.get(id) {
+                        for refines in refines_list {
+                            if let MetaValue::RefinesBased { property, content, .. } = refines {
+                                match property.as_str() {
+                                    "role" => {
+                                        // 处理角色信息，支持marc:relators scheme
+                                        creator.role = Some(match content.as_str() {
+                                            "aut" => "author".to_string(),
+                                            "edt" => "editor".to_string(),
+                                            "trl" => "translator".to_string(),
+                                            "ill" => "illustrator".to_string(),
+                                            _ => content.clone(),
+                                        });
+                                    }
+                                    "display-seq" => {
+                                        creator.display_seq = content.parse::<u32>().ok();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Some(creator)
+            }
             MetadataValue::Meta(meta) => {
                 let name = match meta {
                     MetaValue::NameBased { content } => content.clone(),
                     MetaValue::PropertyBased { content } => content.clone(),
+                    MetaValue::RefinesBased { content, .. } => content.clone(),
                 };
                 Some(Creator {
                     name,
                     role: None,
-                    file_as: None,
+                    display_seq: None,
+                    id: None,
                 })
             }
         }
@@ -334,6 +351,7 @@ impl Metadata {
                 let identifier_value = match meta {
                     MetaValue::NameBased { content } => content.clone(),
                     MetaValue::PropertyBased { content } => content.clone(),
+                    MetaValue::RefinesBased { content, .. } => content.clone(),
                 };
                 Some(Identifier {
                     value: identifier_value,
@@ -347,6 +365,11 @@ impl Metadata {
     /// 获取原始元数据映射
     pub fn raw_metadata(&self) -> &HashMap<String, Vec<MetadataValue>> {
         &self.raw_metadata
+    }
+
+    /// 获取关联元数据映射
+    pub fn refines_metadata(&self) -> &HashMap<String, Vec<MetaValue>> {
+        &self.refines_metadata
     }
 
     /// 根据标签名查找原始元数据
@@ -393,11 +416,25 @@ impl Metadata {
         result
     }
 
+    /// 获取所有基于refines的meta标签
+    pub fn get_refines_based_meta(&self) -> Vec<(String, String, String, Option<String>)> {
+        let mut result = Vec::new();
+        for values in self.refines_metadata.values() {
+            for meta in values {
+                if let MetaValue::RefinesBased { refines_id, property, content, scheme } = meta {
+                    result.push((refines_id.clone(), property.clone(), content.clone(), scheme.clone()));
+                }
+            }
+        }
+        result
+    }
+
     /// 获取元数据的统计信息
-    pub fn get_metadata_stats(&self) -> (usize, usize, usize) {
+    pub fn get_metadata_stats(&self) -> (usize, usize, usize, usize) {
         let mut dublin_core_count = 0;
         let mut name_based_count = 0;
         let mut property_based_count = 0;
+        let mut refines_based_count = 0;
 
         for values in self.raw_metadata.values() {
             for value in values {
@@ -405,10 +442,11 @@ impl Metadata {
                     MetadataValue::DublinCore { .. } => dublin_core_count += 1,
                     MetadataValue::Meta(MetaValue::NameBased { .. }) => name_based_count += 1,
                     MetadataValue::Meta(MetaValue::PropertyBased { .. }) => property_based_count += 1,
+                    MetadataValue::Meta(MetaValue::RefinesBased { .. }) => refines_based_count += 1,
                 }
             }
         }
 
-        (dublin_core_count, name_based_count, property_based_count)
+        (dublin_core_count, name_based_count, property_based_count, refines_based_count)
     }
 } 

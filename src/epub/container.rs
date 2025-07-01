@@ -10,7 +10,7 @@ pub struct RootFile {
 }
 
 /// Container.xml的解析结果
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Container {
     pub rootfiles: Vec<RootFile>,
 }
@@ -151,5 +151,22 @@ mod tests {
         
         let opf_path = container.get_opf_path();
         assert_eq!(opf_path, Some("OEBPS/content.opf".to_string()));
+    }
+    
+    #[test]
+    fn test_parse_container_xml_with_single_rootfile() {
+        let container_xml = r#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>"#;
+        
+        let result = Container::parse_xml(container_xml);
+        assert!(result.is_ok());
+        
+        let container = result.unwrap();
+        assert_eq!(container.rootfiles.len(), 1);
+        assert_eq!(container.get_opf_path(), Some("content.opf".to_string()));
     }
 } 

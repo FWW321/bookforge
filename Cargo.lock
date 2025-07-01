@@ -110,6 +110,7 @@ name = "bookforge"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "once_cell",
  "quick-xml",
  "scraper",
  "serde",

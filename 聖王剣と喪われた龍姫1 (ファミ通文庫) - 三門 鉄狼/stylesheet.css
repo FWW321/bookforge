@@ -1,0 +1,295 @@
+.calibre {
+  line-height: 1.2;
+}
+.calibre1 {
+  display: block;
+}
+.calibre2 {
+  display: block;
+  font-size: 1em;
+  padding-left: 0;
+  padding-right: 0;
+  margin: 0 5pt;
+}
+.calibre3 {
+  display: block;
+  font-size: 2em;
+  font-weight: bold;
+  line-height: 1.2;
+  margin: 0.67em 0;
+}
+.calibre4 {
+  display: block;
+  list-style-type: decimal;
+  margin: 1em 0;
+}
+.calibre5 {
+  display: list-item;
+}
+.calibre6 {
+  display: block;
+  font-size: 1.66667em;
+  font-weight: bold;
+  line-height: 1.2;
+  margin: 0.83em 0;
+}
+.class {
+  display: block;
+  font-size: 1em;
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
+  margin: 0 5pt;
+}
+.class_s {
+  display: block;
+  line-height: 1.2;
+  margin: 1.04966em 0 0;
+}
+.class_s1 {
+  display: block;
+  line-height: 1.2;
+  margin: 0;
+}
+.class_s1y {
+  display: block;
+  font-family: JA, sans-serif;
+  font-size: 1.29167em;
+  line-height: 1.2;
+  margin: 0;
+}
+.class_s2 {
+  height: 1em;
+  line-height: 1.2;
+  max-width: 100%;
+  vertical-align: text-bottom;
+  width: 1em;
+}
+.class_s2a {
+  display: block;
+  line-height: 1.2;
+  margin: 3.14899em 0 0;
+}
+.class_s2c {
+  -webkit-hyphens: auto;
+  -webkit-line-break: normal;
+  display: block;
+  font-size: 1em;
+  hyphens: auto;
+  letter-spacing: 0;
+  line-break: normal;
+  line-height: 1.2;
+  text-align: center;
+  word-spacing: 0;
+  margin: 0 5pt;
+  padding: 4.47857em 0 1.67946em;
+}
+.class_s2k {
+  display: block;
+  font-size: 0.83333em;
+  margin: 1em 0;
+}
+.class_s2p {
+  display: block;
+  font-size: 0.83333em;
+  margin: 1em 1.00806em 1em 0;
+}
+.class_s2x {
+  display: block;
+  margin: 2em 0 1em;
+}
+.class_s2x1 {
+  display: block;
+  font-family: JA, sans-serif;
+  margin: 2em 0 1em;
+}
+.class_s2z {
+  color: gray;
+  display: block;
+  font-family: JA, serif;
+  height: 2px;
+  line-height: 1.75em;
+  margin: 2em 0.342857em 0.5em;
+  border-top: black none 1px;
+  border-right: black solid 1px;
+  border-bottom: black none 1px;
+  border-left: black none 1px;
+}
+.class_s3 {
+  color: gray;
+  display: block;
+  height: 2px;
+  line-height: 1.2;
+  margin: 0.55982em auto;
+  border-top: black solid 1px;
+  border-right: black none 1px;
+  border-bottom: black none 1px;
+  border-left: black none 1px;
+}
+.class_s3j {
+  height: 100%;
+  width: auto;
+}
+.class_s3n {
+  display: block;
+  text-align: justify;
+  margin: 1em 4.2em 1em 0;
+}
+.class_s3r {
+  display: block;
+  text-align: justify;
+  margin: 1em 1.05em 1em 0;
+}
+.class_s3r1 {
+  display: block;
+  margin: 1em 1.05em 1em 0;
+}
+.class_s3u {
+  line-height: normal;
+}
+.class_s3y {
+  display: block;
+  text-align: justify;
+  margin: 1em 0;
+}
+.class_s3y1 {
+  display: block;
+  margin: 1em 0;
+}
+.class_s4hd {
+  display: block;
+  text-align: right;
+  margin: 1em 0;
+}
+.class_s7ke {
+  display: block;
+  text-align: right;
+  margin: 1em 2.1em 1em 0;
+}
+.class_s7m {
+  display: block;
+  font-size: 0.83333em;
+  line-height: 1.49965;
+  margin: 1em 0;
+}
+.class_s7m1 {
+  display: block;
+  font-size: 0.83333em;
+  line-height: 1.49965;
+  margin: 1em 1.05024em 1em 0;
+}
+.class_s7m2 {
+  display: block;
+  font-size: 0.83333em;
+  line-height: 1.49965;
+  margin: 1em 2.10048em 1em 0;
+}
+.class_s7mb {
+  height: 0.8em;
+  max-height: 100%;
+  width: 0.8em;
+}
+.class_s7ms {
+  display: block;
+  font-size: 0.83333em;
+  line-height: 1.3392;
+  margin: 0;
+}
+.class_s7nm {
+  display: block;
+  font-size: 0.83333em;
+  line-height: 1.3392;
+  margin: 1.05007em 0 0;
+}
+.class_s7nv {
+  -webkit-hyphens: auto;
+  -webkit-line-break: normal;
+  display: block;
+  font-size: 1em;
+  hyphens: auto;
+  letter-spacing: 0;
+  line-break: normal;
+  line-height: 1.2;
+  text-align: center;
+  word-spacing: 0;
+  margin: 0 5pt;
+  padding: 3.35892em 0 1.11964em;
+}
+.class_s7pm {
+  -webkit-text-emphasis-style: filled sesame;
+  text-emphasis-style: filled sesame;
+}
+.class_s7pn {
+  font-family: JA, sans-serif;
+}
+.class_s7pr {
+  font-size: 0.83333em;
+  line-height: 1.3392;
+}
+.class_s7ps {
+  font-size: 0.83333em;
+  line-height: 1.49965;
+}
+.class_s7px {
+  font-family: JA, sans-serif;
+  font-size: 1.29167em;
+  line-height: 1.2;
+}
+.class_s7py {
+  -webkit-text-orientation: upright;
+  text-orientation: upright;
+}
+.class_s7r {
+  font-size: 1.29167em;
+  line-height: 1.2;
+}
+.class_s32u {
+  height: 2.5em;
+  max-height: 100%;
+  width: 6.875em;
+}
+.class_sh {
+  height: auto;
+  width: 100%;
+}
+.class_sk {
+  display: block;
+  font-size: 0.625em;
+  height: 100%;
+  width: 100%;
+}
+.class_sr {
+  -webkit-text-combine: horizontal;
+  text-combine-upright: all;
+}
+.class1 {
+  -webkit-hyphens: auto;
+  -webkit-line-break: normal;
+  -webkit-writing-mode: vertical-rl;
+  display: block;
+  font-size: 1em;
+  hyphens: auto;
+  letter-spacing: 0;
+  line-break: normal;
+  padding-left: 0;
+  padding-right: 0;
+  text-align: justify;
+  word-spacing: 0;
+  writing-mode: vertical-rl;
+  margin: 0 5pt;
+}
+.class2 {
+  -webkit-hyphens: auto;
+  -webkit-line-break: normal;
+  -webkit-writing-mode: vertical-rl;
+  display: block;
+  font-size: 1em;
+  hyphens: auto;
+  letter-spacing: 0;
+  line-break: normal;
+  padding-left: 0;
+  padding-right: 0;
+  word-spacing: 0;
+  writing-mode: vertical-rl;
+  margin: 0 5pt;
+}

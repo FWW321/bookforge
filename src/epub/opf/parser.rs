@@ -13,7 +13,7 @@ use quick_xml::reader::Reader;
 use std::collections::HashMap;
 
 /// OPF文件解析结果
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Opf {
     /// EPUB版本
     pub version: String,
@@ -36,7 +36,7 @@ impl Opf {
     /// # 返回值
     /// * `Result<Opf, EpubError>` - 解析后的OPF信息
     pub fn parse_xml(xml_content: &str) -> Result<Opf> {
-        Self::parse_xml_with_config(xml_content, None)
+        Self::parse_xml_with_config(xml_content)
     }
 
     /// 使用指定的配置文件解析OPF文件内容
@@ -47,17 +47,13 @@ impl Opf {
     /// 
     /// # 返回值
     /// * `Result<Opf, EpubError>` - 解析后的OPF信息
-    pub fn parse_xml_with_config(xml_content: &str, config_path: Option<&str>) -> Result<Opf> {
+    pub fn parse_xml_with_config(xml_content: &str) -> Result<Opf> {
         let mut reader = Reader::from_str(xml_content);
         reader.config_mut().trim_text(true);
         reader.config_mut().expand_empty_elements = true;
         
         let mut version = String::new();
-        let mut metadata = if let Some(config_path) = config_path {
-            Metadata::with_config_or_default(config_path)
-        } else {
-            Metadata::new(None)
-        };
+        let mut metadata = Metadata::new();
         let mut manifest = HashMap::new();
         let mut spine = Vec::new();
         let mut spine_toc = None;
@@ -132,7 +128,22 @@ impl Opf {
                             current_section.clear();
                         }
                         "meta" if current_section == "metadata" && !current_meta_property.is_empty() => {
-                            metadata.add_meta_property_based(current_meta_property.clone(), text_content.trim().to_string());
+                            // 检查是否是refines类型的meta标签
+                            if current_meta_property.starts_with("refines:") {
+                                let parts: Vec<&str> = current_meta_property.split(':').collect();
+                                if parts.len() >= 3 {
+                                    let refines_id = parts[1].to_string();
+                                    let property = parts[2].to_string();
+                                    let scheme = if parts.len() > 3 && !parts[3].is_empty() {
+                                        Some(parts[3].to_string())
+                                    } else {
+                                        None
+                                    };
+                                    metadata.add_meta_refines_based(refines_id, property, text_content.trim().to_string(), scheme);
+                                }
+                            } else {
+                                metadata.add_meta_property_based(current_meta_property.clone(), text_content.trim().to_string());
+                            }
                             current_meta_property.clear();
                         }
                         _ if current_section == "metadata" => {
@@ -189,6 +200,8 @@ impl Opf {
         let mut name = String::new();
         let mut content = String::new();
         let mut property = String::new();
+        let mut refines = String::new();
+        let mut scheme = None;
         
         // 解析meta标签属性
         for attr_result in e.attributes() {
@@ -203,13 +216,29 @@ impl Opf {
                 b"property" => {
                     property = String::from_utf8_lossy(&attr.value).to_string();
                 }
+                b"refines" => {
+                    refines = String::from_utf8_lossy(&attr.value).to_string();
+                    // 移除开头的#号（如果存在）
+                    if refines.starts_with('#') {
+                        refines = refines[1..].to_string();
+                    }
+                }
+                b"scheme" => {
+                    scheme = Some(String::from_utf8_lossy(&attr.value).to_string());
+                }
                 _ => {}
             }
         }
         
-        // 处理name属性的meta标签(EPUB2格式)
+        // 处理name属性的meta标签
         if !name.is_empty() && !content.is_empty() {
             metadata.add_meta_name_based(name, content);
+        }
+        
+        // 如果是refines类型的meta标签，等待获取文本内容
+        if !refines.is_empty() && !property.is_empty() {
+            // 这里我们返回特殊格式，包含refines信息，以便后续处理
+            return Ok(format!("refines:{}:{}:{}", refines, property, scheme.unwrap_or_default()));
         }
         
         Ok(property)
@@ -223,6 +252,8 @@ impl Opf {
         let mut name = String::new();
         let mut content = String::new();
         let mut property = String::new();
+        let mut refines = String::new();
+        let mut scheme = None;
         
         // 解析meta标签属性
         for attr_result in e.attributes() {
@@ -237,17 +268,31 @@ impl Opf {
                 b"property" => {
                     property = String::from_utf8_lossy(&attr.value).to_string();
                 }
+                b"refines" => {
+                    refines = String::from_utf8_lossy(&attr.value).to_string();
+                    // 移除开头的#号（如果存在）
+                    if refines.starts_with('#') {
+                        refines = refines[1..].to_string();
+                    }
+                }
+                b"scheme" => {
+                    scheme = Some(String::from_utf8_lossy(&attr.value).to_string());
+                }
                 _ => {}
             }
         }
         
         // 处理name属性的meta标签
         if !name.is_empty() && !content.is_empty() {
-            metadata.add_meta_name_based(name, content);
+            metadata.add_meta_name_based(name, content.clone());
         }
         
+        // 处理refines属性的meta标签（空标签，content在属性中）
+        if !refines.is_empty() && !property.is_empty() && !content.is_empty() {
+            metadata.add_meta_refines_based(refines, property, content, scheme);
+        }
         // 处理property属性的meta标签(EPUB3格式，但没有文本内容的情况)
-        if !property.is_empty() {
+        else if !property.is_empty() && refines.is_empty() {
             metadata.add_meta_property_based(property, String::new());
         }
         
@@ -404,8 +449,8 @@ impl Opf {
         }
         
         // 最后检查custom元数据中的cover信息
-        let custom = self.metadata.custom();
-        if let Some(cover_id) = custom.get("cover") {
+        let other = self.metadata.other();
+        if let Some(cover_id) = other.get("cover") {
             if let Some(item) = self.manifest.get(cover_id) {
                 return Some(item.href.clone());
             }
@@ -459,5 +504,113 @@ impl Opf {
             .filter(|item| item.is_css())
             .map(|item| item.href.clone())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_epub3_opf_parsing_with_refines() {
+        // 创建一个简化的测试，避免复杂的XML字符串
+        let mut opf = Opf {
+            version: "3.0".to_string(),
+            metadata: Metadata::new(),
+            manifest: std::collections::HashMap::new(),
+            spine: Vec::new(),
+            spine_toc: None,
+        };
+
+        // 手动添加EPUB3标准的作者信息
+        let mut dc_attributes = std::collections::HashMap::new();
+        dc_attributes.insert("id".to_string(), "creator1".to_string());
+        opf.metadata.add_dublin_core("creator".to_string(), "J.K. Rowling".to_string(), dc_attributes);
+        
+        // 添加关联的refines元数据
+        opf.metadata.add_meta_refines_based(
+            "creator1".to_string(),
+            "role".to_string(),
+            "aut".to_string(),
+            Some("marc:relators".to_string())
+        );
+        
+        opf.metadata.add_meta_refines_based(
+            "creator1".to_string(),
+            "file-as".to_string(),
+            "Rowling, J.K.".to_string(),
+            None
+        );
+        
+        opf.metadata.add_meta_refines_based(
+            "creator1".to_string(),
+            "display-seq".to_string(),
+            "1".to_string(),
+            None
+        );
+
+        // 验证创建者信息被正确提取
+        let creators = opf.metadata.creators();
+        assert_eq!(creators.len(), 1);
+        
+        let creator = &creators[0];
+        assert_eq!(creator.name, "J.K. Rowling");
+        assert_eq!(creator.role, Some("author".to_string()));
+        assert_eq!(creator.display_seq, Some(1));
+        assert_eq!(creator.id, Some("creator1".to_string()));
+    }
+
+    #[test]
+    fn test_simple_xml_parsing() {
+        let simple_xml = concat!(
+            r#"<?xml version="1.0"?>"#,
+            r#"<package xmlns="http://www.idpf.org/2007/opf" version="3.0">"#,
+            r#"<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">"#,
+            r#"<dc:title>Test Book</dc:title>"#,
+            r#"<dc:creator id="author1">Test Author</dc:creator>"#,
+            r#"</metadata>"#,
+            r#"<manifest></manifest>"#,
+            r#"<spine></spine>"#,
+            r#"</package>"#
+        );
+
+        let opf = Opf::parse_xml(simple_xml).expect("解析简单OPF失败");
+        assert_eq!(opf.version, "3.0");
+        assert_eq!(opf.metadata.title(), Some("Test Book".to_string()));
+        
+        let creators = opf.metadata.creators();
+        assert_eq!(creators.len(), 1);
+        assert_eq!(creators[0].name, "Test Author");
+        assert_eq!(creators[0].id, Some("author1".to_string()));
+    }
+
+    #[test]
+    fn test_basic_opf_structure() {
+        // 测试基本的OPF结构解析
+        let simple_opf = r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:title>Sample Book</dc:title>
+<dc:creator>Sample Author</dc:creator>
+</metadata>
+<manifest>
+<item id="item1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+</manifest>
+<spine>
+<itemref idref="item1"/>
+</spine>
+</package>"#;
+
+        let opf = Opf::parse_xml(simple_opf).expect("解析基本OPF失败");
+        
+        assert_eq!(opf.version, "3.0");
+        assert_eq!(opf.metadata.title(), Some("Sample Book".to_string()));
+        
+        let creators = opf.metadata.creators();
+        assert_eq!(creators.len(), 1);
+        assert_eq!(creators[0].name, "Sample Author");
+        
+        assert_eq!(opf.manifest.len(), 1);
+        assert_eq!(opf.spine.len(), 1);
     }
 } 

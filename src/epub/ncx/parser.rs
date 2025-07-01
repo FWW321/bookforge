@@ -408,13 +408,7 @@ impl Ncx {
         self.page_list.as_ref()
     }
 
-    /// 创建目录树对象
-    /// 
-    /// # 返回值
-    /// * `TocTree` - 目录树对象
-    pub fn create_toc_tree(&self) -> crate::epub::ncx::TocTree {
-        crate::epub::ncx::create_toc_tree_from_ncx(self)
-    }
+    // 注意：创建目录树现在需要 Epub 实例，请使用 create_toc_tree_from_ncx 函数
 
 
 } 

@@ -3,6 +3,9 @@
 //! 提供NCX目录结构的树形表示和显示功能。
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::epub::ncx::{Ncx, NavPoint};
 use crate::epub::{Epub, EpubError, Result};
 use scraper::{Html, Selector};
@@ -14,6 +17,17 @@ pub enum TocTreeStyle {
     TreeSymbols,
     /// 使用缩进和符号（• ）
     Indented,
+}
+
+/// 目录树来源类型
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TocTreeSource {
+    /// 来自NCX文件
+    Ncx,
+    /// 来自EPUB3 nav文档
+    Nav,
+    /// 来源未知（向后兼容）
+    Unknown,
 }
 
 /// 目录树节点
@@ -171,7 +185,7 @@ impl TocTreeNode {
     /// 获取当前节点所代表的章节的HTML内容
     /// 
     /// 该方法会从EPUB文件中提取当前节点对应的HTML文件内容。
-    /// 文件路径会根据EPUB的OPF目录进行解析。
+    /// 文件路径会根据NCX文件的位置进行解析，因为NCX中的路径是相对于NCX文件的。
     /// 
     /// # 参数
     /// * `epub` - EPUB阅读器的可变引用
@@ -180,7 +194,7 @@ impl TocTreeNode {
     /// * `Result<String, EpubError>` - 成功时返回HTML内容，失败时返回错误
     /// 
     /// # 错误处理
-    /// * 如果无法获取OPF目录，返回相应错误
+    /// * 如果无法获取NCX目录，返回相应错误
     /// * 如果文件不存在或无法读取，返回相应错误
     /// 
     /// # 使用示例
@@ -202,26 +216,81 @@ impl TocTreeNode {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_html_content(&self, epub: &mut Epub) -> Result<String> {
-        // 获取OPF文件的目录路径，用于构建完整的文件路径
-        let opf_dir = epub.get_opf_directory()?;
-        
-        // 构建完整的文件路径
-        let full_path = if opf_dir.is_empty() {
-            // 如果OPF在根目录，直接使用src路径
-            self.src.clone()
-        } else {
-            // 如果OPF在子目录中，需要组合路径
-            format!("{}/{}", opf_dir, self.src)
+    pub fn get_html_content(&self, epub: &Epub) -> Result<String> {
+        // 获取NCX文件的目录路径，因为NCX中的路径是相对于NCX文件的
+        let full_path = match epub.get_ncx_directory()? {
+            Some(ncx_dir) => {
+                if ncx_dir.is_empty() {
+                    // 如果NCX在根目录，直接使用src路径
+                    self.src.clone()
+                } else {
+                    // 使用PathBuf正确处理路径组合和规范化
+                    let mut path = PathBuf::from(ncx_dir);
+                    path.push(&self.src);
+                    
+                    // 规范化路径，处理 ../ 等相对路径组件
+                    Self::normalize_path(&path)
+                }
+            }
+            None => {
+                // 如果没有NCX文件，回退到使用OPF目录（兼容性处理）
+                let opf_dir = epub.get_opf_directory()?;
+                if opf_dir.is_empty() {
+                    self.src.clone()
+                } else {
+                    // 使用PathBuf正确处理路径组合和规范化
+                    let mut path = PathBuf::from(opf_dir);
+                    path.push(&self.src);
+                    
+                    // 规范化路径，处理 ../ 等相对路径组件
+                    Self::normalize_path(&path)
+                }
+            }
         };
         
         // 从EPUB文件中提取HTML内容
-        epub.extract_file(&full_path).map_err(|e| {
+        epub.read_chapter_file(&full_path).map_err(|e| {
             EpubError::InvalidEpub(format!(
                 "无法读取章节文件 '{}' (节点ID: {}, 标题: '{}'): {}",
                 full_path, self.id, self.title, e
             ))
         })
+    }
+
+    /// 规范化路径，处理相对路径组件如 ../ 和 ./
+    /// 
+    /// 该方法确保生成的路径使用Unix风格的分隔符（/），这是ZIP文件内部的标准格式。
+    /// 
+    /// # 参数
+    /// * `path` - 需要规范化的路径
+    /// 
+    /// # 返回值
+    /// * `String` - 规范化后的路径字符串，使用Unix风格分隔符
+    fn normalize_path(path: &Path) -> String {
+        let mut components = Vec::new();
+        
+        for component in path.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    // 遇到 ".." 时，删除最后一个组件（如果存在）
+                    components.pop();
+                }
+                std::path::Component::CurDir => {
+                    // 忽略 "." 组件
+                }
+                std::path::Component::Normal(name) => {
+                    // 正常的路径组件，转换为字符串
+                    if let Some(name_str) = name.to_str() {
+                        components.push(name_str.to_string());
+                    }
+                }
+                // 其他组件类型（如根路径、前缀等）在EPUB中不常见，忽略处理
+                _ => {}
+            }
+        }
+        
+        // 使用Unix风格分隔符重新组装路径（ZIP文件内部标准）
+        components.join("/")
     }
 
     /// 获取当前节点的纯文本内容
@@ -245,20 +314,19 @@ impl TocTreeNode {
     /// use bookforge::epub::Epub;
     /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
     /// 
-    /// let mut epub = Epub::new("book.epub")?;
-    /// let ncx_content = epub.extract_file("toc.ncx")?;
-    /// let ncx = bookforge::epub::ncx::Ncx::parse_xml(&ncx_content)?;
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
     /// let toc_tree = create_toc_tree_from_ncx(&ncx);
     /// 
     /// if let Some(first_node) = toc_tree.get_first_node() {
-    ///     match first_node.get_text_content(&mut epub) {
+    ///     match first_node.get_text_content(&epub) {
     ///         Ok(text) => println!("章节纯文本: {}", text),
     ///         Err(e) => println!("获取章节文本失败: {}", e),
     ///     }
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_text_content(&self, epub: &mut Epub) -> Result<String> {
+    pub fn get_text_content(&self, epub: &Epub) -> Result<String> {
         let html_content = self.get_html_content(epub)?;
         
         // 简单的HTML标签移除（可以后续优化为更复杂的HTML解析）
@@ -300,13 +368,303 @@ impl TocTreeNode {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_formatted_text_content(&self, epub: &mut Epub) -> Result<String> {
+    pub fn get_formatted_text_content(&self, epub: &Epub) -> Result<String> {
         let html_content = self.get_html_content(epub)?;
         
         // 使用智能HTML解析器转换为格式化文本
         let formatted_text = Self::convert_html_to_formatted_text(&html_content);
         
         Ok(formatted_text)
+    }
+
+    /// 生成当前节点代表章节的txt文件
+    /// 
+    /// 该方法会将当前节点对应的章节内容保存为txt文件。
+    /// 文件名基于章节标题生成，并进行安全性处理以避免文件系统冲突。
+    /// 默认使用格式化文本内容，保持原有HTML结构的基本格式。
+    /// 
+    /// # 参数
+    /// * `epub` - EPUB阅读器的引用
+    /// * `output_dir` - 输出目录路径，如果为None则使用当前目录
+    /// * `use_formatted_text` - 是否使用格式化文本，false则使用纯文本
+    /// 
+    /// # 返回值
+    /// * `Result<PathBuf, EpubError>` - 成功时返回生成的文件路径，失败时返回错误
+    /// 
+    /// # 错误处理
+    /// * 如果无法获取章节内容，返回相应错误
+    /// * 如果无法创建输出目录，返回相应错误
+    /// * 如果无法写入文件，返回相应错误
+    /// 
+    /// # 使用示例
+    /// 
+    /// ```rust
+    /// use bookforge::epub::Epub;
+    /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
+    /// use std::path::Path;
+    /// 
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
+    /// 
+    /// if let Some(first_node) = toc_tree.get_first_node() {
+    ///     match first_node.generate_txt_file(&epub, Some(Path::new("chapters")), true) {
+    ///         Ok(file_path) => println!("章节已保存到: {:?}", file_path),
+    ///         Err(e) => println!("保存章节失败: {}", e),
+    ///     }
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_txt_file(
+        &self,
+        epub: &Epub,
+        output_dir: Option<&Path>,
+        use_formatted_text: bool,
+    ) -> Result<PathBuf> {
+        // 获取章节内容
+        let content = if use_formatted_text {
+            self.get_formatted_text_content(epub)?
+        } else {
+            self.get_text_content(epub)?
+        };
+
+        // 确定输出目录
+        let dir = output_dir.unwrap_or_else(|| Path::new("output"));
+        
+        // 创建输出目录（如果不存在）
+        if !dir.exists() {
+            fs::create_dir_all(dir).map_err(|e| {
+                EpubError::InvalidEpub(format!(
+                    "无法创建输出目录 '{}': {}",
+                    dir.display(),
+                    e
+                ))
+            })?;
+        }
+
+        // 生成安全的文件名
+        let safe_filename = Self::generate_safe_filename(&self.title, &self.id, self.play_order);
+        let file_path = dir.join(format!("{}.txt", safe_filename));
+
+        // 创建文件内容
+        let file_content = self.create_file_content(&content);
+
+        // 写入文件
+        fs::write(&file_path, file_content).map_err(|e| {
+            EpubError::InvalidEpub(format!(
+                "无法写入文件 '{}': {}",
+                file_path.display(),
+                e
+            ))
+        })?;
+
+        Ok(file_path)
+    }
+
+    /// 批量生成当前节点及其所有子节点的txt文件
+    /// 
+    /// 该方法会递归处理当前节点及其所有子节点，为每个节点生成对应的txt文件。
+    /// 文件会按照目录树结构在输出目录中创建相应的子目录。
+    /// 
+    /// # 参数
+    /// * `epub` - EPUB阅读器的引用
+    /// * `output_dir` - 输出目录路径，如果为None则使用当前目录
+    /// * `use_formatted_text` - 是否使用格式化文本，false则使用纯文本
+    /// * `create_subdirs` - 是否根据目录树结构创建子目录
+    /// 
+    /// # 返回值
+    /// * `Result<Vec<PathBuf>, EpubError>` - 成功时返回所有生成的文件路径列表，失败时返回错误
+    /// 
+    /// # 使用示例
+    /// 
+    /// ```rust
+    /// use bookforge::epub::Epub;
+    /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
+    /// use std::path::Path;
+    /// 
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
+    /// 
+    /// if let Some(first_node) = toc_tree.get_first_node() {
+    ///     match first_node.generate_txt_files_recursive(&epub, Some(Path::new("chapters")), true, true) {
+    ///         Ok(file_paths) => {
+    ///             println!("已生成 {} 个章节文件:", file_paths.len());
+    ///             for path in file_paths {
+    ///                 println!("  - {:?}", path);
+    ///             }
+    ///         }
+    ///         Err(e) => println!("批量保存章节失败: {}", e),
+    ///     }
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_txt_files_recursive(
+        &self,
+        epub: &Epub,
+        output_dir: Option<&Path>,
+        use_formatted_text: bool,
+        create_subdirs: bool,
+    ) -> Result<Vec<PathBuf>> {
+        let mut file_paths = Vec::new();
+        
+        // 确定输出目录
+        let base_dir = output_dir.unwrap_or_else(|| Path::new("output"));
+        
+        // 为当前节点生成文件
+        self.generate_txt_files_recursive_impl(
+            epub,
+            base_dir,
+            use_formatted_text,
+            create_subdirs,
+            0,
+            &mut file_paths,
+        )?;
+        
+        Ok(file_paths)
+    }
+
+    /// 递归生成txt文件的内部实现
+    fn generate_txt_files_recursive_impl(
+        &self,
+        epub: &Epub,
+        current_dir: &Path,
+        use_formatted_text: bool,
+        create_subdirs: bool,
+        depth: u32,
+        file_paths: &mut Vec<PathBuf>,
+    ) -> Result<()> {
+        // 为当前节点生成文件
+        let file_path = self.generate_txt_file(epub, Some(current_dir), use_formatted_text)?;
+        file_paths.push(file_path);
+
+        // 如果需要创建子目录且有子节点，为子节点创建目录
+        if create_subdirs && !self.children.is_empty() {
+            let safe_dirname = Self::generate_safe_filename(&self.title, &self.id, self.play_order);
+            let child_dir = current_dir.join(&safe_dirname);
+            
+            // 创建子目录
+            if !child_dir.exists() {
+                fs::create_dir_all(&child_dir).map_err(|e| {
+                    EpubError::InvalidEpub(format!(
+                        "无法创建子目录 '{}': {}",
+                        child_dir.display(),
+                        e
+                    ))
+                })?;
+            }
+
+            // 递归处理子节点
+            for child in &self.children {
+                child.generate_txt_files_recursive_impl(
+                    epub,
+                    &child_dir,
+                    use_formatted_text,
+                    create_subdirs,
+                    depth + 1,
+                    file_paths,
+                )?;
+            }
+        } else {
+            // 不创建子目录，在当前目录中处理所有子节点
+            for child in &self.children {
+                child.generate_txt_files_recursive_impl(
+                    epub,
+                    current_dir,
+                    use_formatted_text,
+                    create_subdirs,
+                    depth + 1,
+                    file_paths,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 生成安全的文件名
+    /// 
+    /// 该方法会处理章节标题，移除或替换不安全的字符，确保生成的文件名在各种文件系统中都能正常使用。
+    /// 
+    /// # 参数
+    /// * `title` - 章节标题
+    /// * `id` - 节点ID（作为备用）
+    /// * `play_order` - 播放顺序（用于排序和唯一性）
+    /// 
+    /// # 返回值
+    /// * `String` - 安全的文件名（不包含扩展名）
+    fn generate_safe_filename(title: &str, id: &str, play_order: u32) -> String {
+        // 移除或替换不安全的字符
+        let mut safe_title = title
+            .chars()
+            .map(|c| match c {
+                // 文件系统保留字符
+                '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+                '/' | '\\' => '_',
+                // 控制字符
+                c if c.is_control() => '_',
+                // 其他字符保持不变
+                c => c,
+            })
+            .collect::<String>();
+
+        // 移除开头和结尾的空白字符和点号
+        safe_title = safe_title.trim().trim_matches('.').to_string();
+        
+        // 如果标题为空或只包含无效字符，使用ID作为备用
+        if safe_title.is_empty() {
+            safe_title = id.to_string();
+        }
+        
+        // 如果仍然为空，使用play_order
+        if safe_title.is_empty() {
+            safe_title = format!("chapter_{}", play_order);
+        }
+
+        // 限制文件名长度（保留空间给序号和扩展名）
+        const MAX_FILENAME_LENGTH: usize = 200;
+        if safe_title.len() > MAX_FILENAME_LENGTH {
+            safe_title.truncate(MAX_FILENAME_LENGTH);
+            // 确保不会在Unicode字符中间截断
+            while !safe_title.is_char_boundary(safe_title.len()) {
+                safe_title.pop();
+            }
+        }
+
+        // 添加播放顺序作为前缀，确保文件按顺序排列
+        format!("{:03}_{}", play_order, safe_title)
+    }
+
+    /// 创建文件内容
+    /// 
+    /// 该方法会创建包含元数据和章节内容的完整文件内容。
+    /// 
+    /// # 参数
+    /// * `content` - 章节文本内容
+    /// 
+    /// # 返回值
+    /// * `String` - 完整的文件内容
+    fn create_file_content(&self, content: &str) -> String {
+        let mut file_content = String::new();
+        
+        // 添加文件头部信息
+        // file_content.push_str("═══════════════════════════════════════\n");
+        // file_content.push_str(&format!("章节标题: {}\n", self.title));
+        // file_content.push_str(&format!("节点ID: {}\n", self.id));
+        // file_content.push_str(&format!("播放顺序: {}\n", self.play_order));
+        // file_content.push_str(&format!("源文件: {}\n", self.src));
+        // file_content.push_str("═══════════════════════════════════════\n\n");
+        
+        // 添加章节内容
+        file_content.push_str(content);
+        
+        // 添加文件尾部
+        // file_content.push_str("\n\n");
+        // file_content.push_str("═══════════════════════════════════════\n");
+        // file_content.push_str("Generated by BookForge EPUB Reader\n");
+        // file_content.push_str("═══════════════════════════════════════\n");
+        
+        file_content
     }
 
     /// 将HTML转换为格式化文本
@@ -558,8 +916,7 @@ impl TocTreeNode {
 }
 
 /// 目录树结构
-#[derive(Debug, Clone)]
-pub struct TocTree {
+pub struct TocTree<'a> {
     /// 文档标题
     pub title: Option<String>,
     /// 根节点列表
@@ -570,40 +927,59 @@ pub struct TocTree {
     pub show_paths: bool,
     /// 最大显示深度（None表示显示所有）
     pub max_depth: Option<u32>,
+    /// EPUB阅读器引用
+    pub epub: &'a Epub,
+    /// 目录树来源
+    pub source: TocTreeSource,
 }
 
-impl TocTree {
+impl<'a> TocTree<'a> {
     /// 创建新的目录树
+    /// 
+    /// # 参数
+    /// * `epub` - EPUB阅读器的引用
     /// 
     /// # 使用示例
     /// 
     /// ```rust
     /// use bookforge::epub::ncx::toc_tree::TocTree;
+    /// use bookforge::epub::Epub;
     /// 
-    /// let toc_tree = TocTree::new();
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let toc_tree = TocTree::new(&epub);
     /// 
     /// // 获取第一个根节点
     /// if let Some(first_node) = toc_tree.get_first_node() {
     ///     println!("第一个节点: {}", first_node.title);
     /// }
-    /// 
-    /// // 获取第一个根节点的第二个子节点
-    /// if let Some(node) = toc_tree.get_node_by_path(&[0, 1]) {
-    ///     println!("节点: {}", node.title);
-    /// }
-    /// 
-    /// // 获取第二个根节点的第一个子节点的第三个子节点
-    /// if let Some(node) = toc_tree.get_node_by_path(&[1, 0, 2]) {
-    ///     println!("深层节点: {}", node.title);
-    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn new() -> Self {
+    pub fn new(epub: &'a Epub) -> Self {
         Self {
             title: None,
             roots: Vec::new(),
             style: TocTreeStyle::TreeSymbols,
             show_paths: true,
             max_depth: None,
+            epub,
+            source: TocTreeSource::Unknown,
+        }
+    }
+    
+    /// 创建指定来源的目录树
+    /// 
+    /// # 参数
+    /// * `epub` - EPUB阅读器的引用
+    /// * `source` - 目录树来源
+    pub fn new_with_source(epub: &'a Epub, source: TocTreeSource) -> Self {
+        Self {
+            title: None,
+            roots: Vec::new(),
+            style: TocTreeStyle::TreeSymbols,
+            show_paths: true,
+            max_depth: None,
+            epub,
+            source,
         }
     }
 
@@ -776,13 +1152,90 @@ impl TocTree {
         self.get_node_by_path(&prev_path)
     }
 
+    /// 获取指定节点的HTML内容
+    /// 
+    /// # 参数
+    /// * `node` - 目录树节点的引用
+    /// 
+    /// # 返回值
+    /// * `Result<String, EpubError>` - 成功时返回HTML内容，失败时返回错误
+    pub fn get_node_html_content(&self, node: &TocTreeNode) -> Result<String> {
+        // 获取NCX文件的目录路径，因为NCX中的路径是相对于NCX文件的
+        let full_path = match self.epub.get_ncx_directory()? {
+            Some(ncx_dir) => {
+                if ncx_dir.is_empty() {
+                    // 如果NCX在根目录，直接使用src路径
+                    node.src.clone()
+                } else {
+                    // 使用PathBuf正确处理路径组合和规范化
+                    let mut path = PathBuf::from(ncx_dir);
+                    path.push(&node.src);
+                    
+                    // 规范化路径，处理 ../ 等相对路径组件
+                    TocTreeNode::normalize_path(&path)
+                }
+            }
+            None => {
+                // 如果没有NCX文件，回退到使用OPF目录（兼容性处理）
+                let opf_dir = self.epub.get_opf_directory()?;
+                if opf_dir.is_empty() {
+                    node.src.clone()
+                } else {
+                    // 使用PathBuf正确处理路径组合和规范化
+                    let mut path = PathBuf::from(opf_dir);
+                    path.push(&node.src);
+                    
+                    // 规范化路径，处理 ../ 等相对路径组件
+                    TocTreeNode::normalize_path(&path)
+                }
+            }
+        };
+        
+        // 从EPUB文件中提取HTML内容
+        self.epub.read_chapter_file(&full_path).map_err(|e| {
+            EpubError::InvalidEpub(format!(
+                "无法读取章节文件 '{}' (节点ID: {}, 标题: '{}'): {}",
+                full_path, node.id, node.title, e
+            ))
+        })
+    }
+
+    /// 获取指定节点的纯文本内容
+    /// 
+    /// # 参数
+    /// * `node` - 目录树节点的引用
+    /// 
+    /// # 返回值
+    /// * `Result<String, EpubError>` - 成功时返回纯文本内容，失败时返回错误
+    pub fn get_node_text_content(&self, node: &TocTreeNode) -> Result<String> {
+        let html_content = self.get_node_html_content(node)?;
+        
+        // 简单的HTML标签移除
+        let text_content = TocTreeNode::strip_html_tags(&html_content);
+        
+        Ok(text_content)
+    }
+
+    /// 获取指定节点的格式化文本内容
+    /// 
+    /// # 参数
+    /// * `node` - 目录树节点的引用
+    /// 
+    /// # 返回值
+    /// * `Result<String, EpubError>` - 成功时返回格式化文本内容，失败时返回错误
+    pub fn get_node_formatted_text_content(&self, node: &TocTreeNode) -> Result<String> {
+        let html_content = self.get_node_html_content(node)?;
+        
+        // 使用智能HTML解析器转换为格式化文本
+        let formatted_text = TocTreeNode::convert_html_to_formatted_text(&html_content);
+        
+        Ok(formatted_text)
+    }
+
     /// 获取所有章节的HTML内容
     /// 
     /// 该方法会遍历目录树中的所有节点，获取每个节点对应的HTML内容。
     /// 返回的结果按照目录树的遍历顺序排列。
-    /// 
-    /// # 参数
-    /// * `epub` - EPUB阅读器的可变引用
     /// 
     /// # 返回值
     /// * `Result<Vec<(String, String, String)>, EpubError>` - 成功时返回(节点ID, 标题, HTML内容)的元组列表
@@ -793,12 +1246,11 @@ impl TocTree {
     /// use bookforge::epub::Epub;
     /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
     /// 
-    /// let mut epub = Epub::new("book.epub")?;
-    /// let ncx_content = epub.extract_file("toc.ncx")?;
-    /// let ncx = bookforge::epub::ncx::Ncx::parse_xml(&ncx_content)?;
-    /// let toc_tree = create_toc_tree_from_ncx(&ncx);
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
     /// 
-    /// match toc_tree.get_all_html_contents(&mut epub) {
+    /// match toc_tree.get_all_html_contents() {
     ///     Ok(contents) => {
     ///         for (id, title, html) in contents {
     ///             println!("章节: {} ({})", title, id);
@@ -809,11 +1261,11 @@ impl TocTree {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_all_html_contents(&self, epub: &mut Epub) -> Result<Vec<(String, String, String)>> {
+    pub fn get_all_html_contents(&self) -> Result<Vec<(String, String, String)>> {
         let mut contents = Vec::new();
         
         for root in &self.roots {
-            self.collect_html_contents(root, epub, &mut contents)?;
+            self.collect_html_contents(root, &mut contents)?;
         }
         
         Ok(contents)
@@ -823,11 +1275,10 @@ impl TocTree {
     fn collect_html_contents(
         &self,
         node: &TocTreeNode,
-        epub: &mut Epub,
         contents: &mut Vec<(String, String, String)>,
     ) -> Result<()> {
         // 获取当前节点的HTML内容
-        match node.get_html_content(epub) {
+        match self.get_node_html_content(node) {
             Ok(html) => {
                 contents.push((node.id.clone(), node.title.clone(), html));
             }
@@ -839,7 +1290,7 @@ impl TocTree {
         
         // 递归处理子节点
         for child in &node.children {
-            self.collect_html_contents(child, epub, contents)?;
+            self.collect_html_contents(child, contents)?;
         }
         
         Ok(())
@@ -850,9 +1301,6 @@ impl TocTree {
     /// 该方法会遍历目录树中的所有节点，获取每个节点对应的纯文本内容。
     /// 这对于全文搜索、内容分析等功能很有用。
     /// 
-    /// # 参数
-    /// * `epub` - EPUB阅读器的可变引用
-    /// 
     /// # 返回值
     /// * `Result<Vec<(String, String, String)>, EpubError>` - 成功时返回(节点ID, 标题, 纯文本内容)的元组列表
     /// 
@@ -862,12 +1310,11 @@ impl TocTree {
     /// use bookforge::epub::Epub;
     /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
     /// 
-    /// let mut epub = Epub::new("book.epub")?;
-    /// let ncx_content = epub.extract_file("toc.ncx")?;
-    /// let ncx = bookforge::epub::ncx::Ncx::parse_xml(&ncx_content)?;
-    /// let toc_tree = create_toc_tree_from_ncx(&ncx);
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
     /// 
-    /// match toc_tree.get_all_text_contents(&mut epub) {
+    /// match toc_tree.get_all_text_contents() {
     ///     Ok(contents) => {
     ///         for (id, title, text) in contents {
     ///             println!("章节: {} ({})", title, id);
@@ -879,11 +1326,11 @@ impl TocTree {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_all_text_contents(&self, epub: &mut Epub) -> Result<Vec<(String, String, String)>> {
+    pub fn get_all_text_contents(&self) -> Result<Vec<(String, String, String)>> {
         let mut contents = Vec::new();
         
         for root in &self.roots {
-            self.collect_text_contents(root, epub, &mut contents)?;
+            self.collect_text_contents(root, &mut contents)?;
         }
         
         Ok(contents)
@@ -893,11 +1340,10 @@ impl TocTree {
     fn collect_text_contents(
         &self,
         node: &TocTreeNode,
-        epub: &mut Epub,
         contents: &mut Vec<(String, String, String)>,
     ) -> Result<()> {
         // 获取当前节点的纯文本内容
-        match node.get_text_content(epub) {
+        match self.get_node_text_content(node) {
             Ok(text) => {
                 contents.push((node.id.clone(), node.title.clone(), text));
             }
@@ -909,7 +1355,7 @@ impl TocTree {
         
         // 递归处理子节点
         for child in &node.children {
-            self.collect_text_contents(child, epub, contents)?;
+            self.collect_text_contents(child, contents)?;
         }
         
         Ok(())
@@ -920,9 +1366,6 @@ impl TocTree {
     /// 该方法会遍历目录树中的所有节点，获取每个节点对应的格式化文本内容。
     /// 格式化文本会保持原有的HTML结构，正确处理块级元素和HTML实体。
     /// 
-    /// # 参数
-    /// * `epub` - EPUB阅读器的可变引用
-    /// 
     /// # 返回值
     /// * `Result<Vec<(String, String, String)>, EpubError>` - 成功时返回(节点ID, 标题, 格式化文本内容)的元组列表
     /// 
@@ -932,12 +1375,11 @@ impl TocTree {
     /// use bookforge::epub::Epub;
     /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
     /// 
-    /// let mut epub = Epub::new("book.epub")?;
-    /// let ncx_content = epub.extract_file("toc.ncx")?;
-    /// let ncx = bookforge::epub::ncx::Ncx::parse_xml(&ncx_content)?;
-    /// let toc_tree = create_toc_tree_from_ncx(&ncx);
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
     /// 
-    /// match toc_tree.get_all_formatted_text_contents(&mut epub) {
+    /// match toc_tree.get_all_formatted_text_contents() {
     ///     Ok(contents) => {
     ///         for (id, title, text) in contents {
     ///             println!("章节: {} ({})", title, id);
@@ -949,11 +1391,11 @@ impl TocTree {
     /// }
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn get_all_formatted_text_contents(&self, epub: &mut Epub) -> Result<Vec<(String, String, String)>> {
+    pub fn get_all_formatted_text_contents(&self) -> Result<Vec<(String, String, String)>> {
         let mut contents = Vec::new();
         
         for root in &self.roots {
-            self.collect_formatted_text_contents(root, epub, &mut contents)?;
+            self.collect_formatted_text_contents(root, &mut contents)?;
         }
         
         Ok(contents)
@@ -963,11 +1405,10 @@ impl TocTree {
     fn collect_formatted_text_contents(
         &self,
         node: &TocTreeNode,
-        epub: &mut Epub,
         contents: &mut Vec<(String, String, String)>,
     ) -> Result<()> {
         // 获取当前节点的格式化文本内容
-        match node.get_formatted_text_content(epub) {
+        match self.get_node_formatted_text_content(node) {
             Ok(text) => {
                 contents.push((node.id.clone(), node.title.clone(), text));
             }
@@ -979,10 +1420,468 @@ impl TocTree {
         
         // 递归处理子节点
         for child in &node.children {
-            self.collect_formatted_text_contents(child, epub, contents)?;
+            self.collect_formatted_text_contents(child, contents)?;
         }
         
         Ok(())
+    }
+
+    /// 为整个目录树生成txt文件
+    /// 
+    /// 该方法会为目录树中的所有节点生成对应的txt文件。
+    /// 支持创建分层目录结构来组织章节文件。
+    /// 
+    /// # 参数
+    /// * `output_dir` - 输出目录路径，如果为None则使用当前目录
+    /// * `use_formatted_text` - 是否使用格式化文本，false则使用纯文本
+    /// * `create_subdirs` - 是否根据目录树结构创建子目录
+    /// 
+    /// # 返回值
+    /// * `Result<Vec<PathBuf>, EpubError>` - 成功时返回所有生成的文件路径列表，失败时返回错误
+    /// 
+    /// # 使用示例
+    /// 
+    /// ```rust
+    /// use bookforge::epub::Epub;
+    /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
+    /// use std::path::Path;
+    /// 
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
+    /// 
+    /// match toc_tree.generate_all_txt_files(Some(Path::new("chapters")), true, true) {
+    ///     Ok(file_paths) => {
+    ///         println!("已生成 {} 个章节文件:", file_paths.len());
+    ///         for path in file_paths {
+    ///             println!("  - {:?}", path);
+    ///         }
+    ///     }
+    ///     Err(e) => println!("批量生成章节失败: {}", e),
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_all_txt_files(
+        &self,
+        output_dir: Option<&Path>,
+        use_formatted_text: bool,
+        create_subdirs: bool,
+    ) -> Result<Vec<PathBuf>> {
+        let mut all_file_paths = Vec::new();
+        
+        // 确定输出目录
+        let base_dir = output_dir.unwrap_or_else(|| Path::new("."));
+        
+        // 为所有根节点生成文件
+        for root in &self.roots {
+            let file_paths = root.generate_txt_files_recursive(
+                self.epub,
+                Some(base_dir),
+                use_formatted_text,
+                create_subdirs,
+            )?;
+            all_file_paths.extend(file_paths);
+        }
+        
+        Ok(all_file_paths)
+    }
+
+    /// 为整个目录树生成txt文件，并创建索引文件
+    /// 
+    /// 该方法不仅会为所有节点生成txt文件，还会创建一个包含所有章节信息的索引文件。
+    /// 索引文件包含目录结构和文件路径映射。
+    /// 
+    /// # 参数
+    /// * `output_dir` - 输出目录路径，如果为None则使用当前目录
+    /// * `use_formatted_text` - 是否使用格式化文本，false则使用纯文本
+    /// * `create_subdirs` - 是否根据目录树结构创建子目录
+    /// * `index_filename` - 索引文件名，如果为None则使用默认名称
+    /// 
+    /// # 返回值
+    /// * `Result<(Vec<PathBuf>, PathBuf), EpubError>` - 成功时返回(章节文件路径列表, 索引文件路径)，失败时返回错误
+    /// 
+    /// # 使用示例
+    /// 
+    /// ```rust
+    /// use bookforge::epub::Epub;
+    /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
+    /// use std::path::Path;
+    /// 
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
+    /// 
+    /// match toc_tree.generate_all_txt_files_with_index(
+    ///     Some(Path::new("chapters")), 
+    ///     true, 
+    ///     true, 
+    ///     Some("目录索引.txt")
+    /// ) {
+    ///     Ok((file_paths, index_path)) => {
+    ///         println!("已生成 {} 个章节文件", file_paths.len());
+    ///         println!("索引文件: {:?}", index_path);
+    ///     }
+    ///     Err(e) => println!("批量生成失败: {}", e),
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_all_txt_files_with_index(
+        &self,
+        output_dir: Option<&Path>,
+        use_formatted_text: bool,
+        create_subdirs: bool,
+        index_filename: Option<&str>,
+    ) -> Result<(Vec<PathBuf>, PathBuf)> {
+        // 生成所有章节文件
+        let file_paths = self.generate_all_txt_files(output_dir, use_formatted_text, create_subdirs)?;
+        
+        // 确定输出目录和索引文件路径
+        let base_dir = output_dir.unwrap_or_else(|| Path::new("."));
+        let index_name = index_filename.unwrap_or("目录索引.txt");
+        let index_path = base_dir.join(index_name);
+        
+        // 生成索引文件内容
+        let index_content = self.create_index_content(&file_paths, base_dir, use_formatted_text)?;
+        
+        // 写入索引文件
+        fs::write(&index_path, index_content).map_err(|e| {
+            EpubError::InvalidEpub(format!(
+                "无法写入索引文件 '{}': {}",
+                index_path.display(),
+                e
+            ))
+        })?;
+        
+        Ok((file_paths, index_path))
+    }
+
+    /// 将所有章节合并为一个txt文件
+    /// 
+    /// 该方法会将目录树中的所有章节内容按顺序合并到一个txt文件中。
+    /// 文件名会基于EPUB的标题生成，每个章节之间会有清晰的分隔。
+    /// 
+    /// # 参数
+    /// * `output_dir` - 输出目录路径，如果为None则使用当前目录
+    /// * `use_formatted_text` - 是否使用格式化文本，false则使用纯文本
+    /// * `filename` - 自定义文件名，如果为None则使用书籍标题
+    /// 
+    /// # 返回值
+    /// * `Result<PathBuf, EpubError>` - 成功时返回生成的文件路径，失败时返回错误
+    /// 
+    /// # 使用示例
+    /// 
+    /// ```rust
+    /// use bookforge::epub::Epub;
+    /// use bookforge::epub::ncx::toc_tree::create_toc_tree_from_ncx;
+    /// use std::path::Path;
+    /// 
+    /// let epub = Epub::from_path("book.epub")?;
+    /// let ncx = epub.ncx()?.unwrap();
+    /// let toc_tree = create_toc_tree_from_ncx(&ncx, &epub);
+    /// 
+    /// match toc_tree.generate_merged_txt_file(
+    ///     Some(Path::new("output")), 
+    ///     true,
+    ///     None
+    /// ) {
+    ///     Ok(file_path) => println!("合并文件已保存到: {:?}", file_path),
+    ///     Err(e) => println!("合并文件失败: {}", e),
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_merged_txt_file(
+        &self,
+        output_dir: Option<&Path>,
+        use_formatted_text: bool,
+        filename: Option<&str>,
+    ) -> Result<PathBuf> {
+        // 确定输出目录
+        let dir = output_dir.unwrap_or_else(|| Path::new("."));
+        
+        // 创建输出目录（如果不存在）
+        if !dir.exists() {
+            fs::create_dir_all(dir).map_err(|e| {
+                EpubError::InvalidEpub(format!(
+                    "无法创建输出目录 '{}': {}",
+                    dir.display(),
+                    e
+                ))
+            })?;
+        }
+
+        // 生成文件名
+        let safe_filename = if let Some(name) = filename {
+            name.to_string()
+        } else if let Some(ref title) = self.title {
+            Self::generate_safe_book_filename(title)
+        } else {
+            "merged_book".to_string()
+        };
+        
+        let file_path = dir.join(format!("{}.txt", safe_filename));
+
+        // 收集所有章节内容
+        let chapter_contents = if use_formatted_text {
+            self.get_all_formatted_text_contents()?
+        } else {
+            self.get_all_text_contents()?
+        };
+
+        // 创建合并文件内容
+        let merged_content = self.create_merged_file_content(&chapter_contents, use_formatted_text)?;
+
+        // 写入文件
+        fs::write(&file_path, merged_content).map_err(|e| {
+            EpubError::InvalidEpub(format!(
+                "无法写入合并文件 '{}': {}",
+                file_path.display(),
+                e
+            ))
+        })?;
+
+        Ok(file_path)
+    }
+
+    /// 生成安全的书籍文件名
+    fn generate_safe_book_filename(title: &str) -> String {
+        // 移除或替换不安全的字符
+        let mut safe_title = title
+            .chars()
+            .map(|c| match c {
+                // 文件系统保留字符
+                '<' | '>' | ':' | '"' | '|' | '?' | '*' => '_',
+                '/' | '\\' => '_',
+                // 控制字符
+                c if c.is_control() => '_',
+                // 其他字符保持不变
+                c => c,
+            })
+            .collect::<String>();
+
+        // 移除开头和结尾的空白字符和点号
+        safe_title = safe_title.trim().trim_matches('.').to_string();
+        
+        // 如果标题为空或只包含无效字符，使用默认名称
+        if safe_title.is_empty() {
+            safe_title = "unnamed_book".to_string();
+        }
+
+        // 限制文件名长度
+        const MAX_FILENAME_LENGTH: usize = 150;
+        if safe_title.len() > MAX_FILENAME_LENGTH {
+            safe_title.truncate(MAX_FILENAME_LENGTH);
+            // 确保不会在Unicode字符中间截断
+            while !safe_title.is_char_boundary(safe_title.len()) {
+                safe_title.pop();
+            }
+        }
+
+        safe_title
+    }
+
+    /// 创建合并文件内容
+    fn create_merged_file_content(
+        &self,
+        chapter_contents: &[(String, String, String)],
+        use_formatted_text: bool,
+    ) -> Result<String> {
+        let mut content = String::new();
+        
+        // 添加文件头部
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("           BookForge EPUB 完整内容\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        // 添加书籍信息
+        if let Some(ref title) = self.title {
+            content.push_str(&format!("书籍标题: {}\n", title));
+        }
+        
+        let stats = self.get_statistics();
+        content.push_str(&format!("章节总数: {}\n", stats.total_nodes));
+        content.push_str(&format!("文本格式: {}\n", if use_formatted_text { "格式化文本" } else { "纯文本" }));
+        
+        // 获取当前时间
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        content.push_str(&format!("生成时间: Unix时间戳 {}\n", now));
+        content.push_str("\n");
+        
+        // 添加目录概览
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("                目录概览\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        for (index, (_, title, _)) in chapter_contents.iter().enumerate() {
+            content.push_str(&format!("{}. {}\n", index + 1, title));
+        }
+        content.push_str("\n");
+        
+        // 添加章节内容
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("                正文内容\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        for (index, (id, title, chapter_content)) in chapter_contents.iter().enumerate() {
+            // 章节标题分隔
+            content.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            content.push_str(&format!("第 {} 章: {}\n", index + 1, title));
+            content.push_str(&format!("章节ID: {}\n", id));
+            content.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+            
+            // 章节内容
+            content.push_str(chapter_content);
+            content.push_str("\n\n");
+            
+            // 章节结束分隔
+            content.push_str("─────────────────────────────────────\n");
+            content.push_str(&format!("第 {} 章结束\n", index + 1));
+            content.push_str("─────────────────────────────────────\n\n\n");
+        }
+        
+        // 添加文件尾部
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("                全书结束\n");
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("Generated by BookForge EPUB Reader\n");
+        content.push_str("═══════════════════════════════════════\n");
+        
+        Ok(content)
+    }
+
+    /// 创建索引文件内容
+    fn create_index_content(
+        &self,
+        file_paths: &[PathBuf],
+        base_dir: &Path,
+        use_formatted_text: bool,
+    ) -> Result<String> {
+        let mut content = String::new();
+        
+        // 添加索引文件头部
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("           BookForge EPUB 章节索引\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        // 添加基本信息
+        if let Some(ref title) = self.title {
+            content.push_str(&format!("电子书标题: {}\n", title));
+        }
+        
+        let stats = self.get_statistics();
+        content.push_str(&format!("章节总数: {}\n", stats.total_nodes));
+        content.push_str(&format!("根章节数: {}\n", stats.root_count));
+        content.push_str(&format!("最大深度: {}\n", stats.max_depth));
+        content.push_str(&format!("文本格式: {}\n", if use_formatted_text { "格式化文本" } else { "纯文本" }));
+        // 获取当前时间
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        content.push_str(&format!("生成时间: Unix时间戳 {}\n", now));
+        content.push_str(&format!("文件总数: {}\n\n", file_paths.len()));
+        
+        // 添加目录树结构
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("                目录结构\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        // 渲染目录树（不显示文件路径）
+        let tree_content = self.render_tree_for_index();
+        content.push_str(&tree_content);
+        content.push_str("\n");
+        
+        // 添加文件路径映射
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("                文件路径映射\n");
+        content.push_str("═══════════════════════════════════════\n\n");
+        
+        // 收集所有节点信息和对应的文件路径
+        let node_info_list = self.collect_node_info_list();
+        
+        for (index, (node_info, file_path)) in node_info_list.iter().zip(file_paths.iter()).enumerate() {
+            let relative_path = file_path.strip_prefix(base_dir)
+                .unwrap_or(file_path)
+                .display();
+            
+            content.push_str(&format!(
+                "{:3}. [{}] {} \n     文件: {}\n     源文件: {}\n\n",
+                index + 1,
+                node_info.play_order,
+                node_info.title,
+                relative_path,
+                node_info.src
+            ));
+        }
+        
+        // 添加尾部信息
+        content.push_str("═══════════════════════════════════════\n");
+        content.push_str("Generated by BookForge EPUB Reader\n");
+        content.push_str("═══════════════════════════════════════\n");
+        
+        Ok(content)
+    }
+
+    /// 为索引文件渲染目录树
+    fn render_tree_for_index(&self) -> String {
+        let mut result = String::new();
+        
+        // 渲染根节点
+        for (index, root) in self.roots.iter().enumerate() {
+            let is_last = index == self.roots.len() - 1;
+            self.render_node_for_index(root, 0, is_last, "", &mut result);
+        }
+        
+        result
+    }
+
+    /// 为索引文件渲染单个节点
+    fn render_node_for_index(
+        &self,
+        node: &TocTreeNode,
+        current_depth: u32,
+        is_last: bool,
+        prefix: &str,
+        result: &mut String,
+    ) {
+        let current_prefix = if is_last { "└── " } else { "├── " };
+        
+        // 格式化节点内容（不显示文件路径）
+        let content = format!("[{}] {}", node.play_order, node.title);
+        result.push_str(&format!("{}{}{}\n", prefix, current_prefix, content));
+
+        // 渲染子节点
+        let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+        for (index, child) in node.children.iter().enumerate() {
+            let is_child_last = index == node.children.len() - 1;
+            self.render_node_for_index(child, current_depth + 1, is_child_last, &child_prefix, result);
+        }
+    }
+
+    /// 收集所有节点信息
+    fn collect_node_info_list(&self) -> Vec<NodeInfo> {
+        let mut node_info_list = Vec::new();
+        
+        for root in &self.roots {
+            self.collect_node_info_recursive(root, &mut node_info_list);
+        }
+        
+        node_info_list
+    }
+
+    /// 递归收集节点信息
+    fn collect_node_info_recursive(&self, node: &TocTreeNode, info_list: &mut Vec<NodeInfo>) {
+        info_list.push(NodeInfo {
+            play_order: node.play_order,
+            title: node.title.clone(),
+            src: node.src.clone(),
+        });
+        
+        for child in &node.children {
+            self.collect_node_info_recursive(child, info_list);
+        }
     }
 
     /// 渲染单个节点
@@ -1071,13 +1970,9 @@ impl TocTree {
     }
 }
 
-impl Default for TocTree {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Note: TocTree 不再实现 Default trait，因为需要 epub 引用参数
 
-impl Display for TocTree {
+impl<'a> Display for TocTree<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let mut result = String::new();
         
@@ -1115,6 +2010,17 @@ pub struct TocStatistics {
     pub root_count: usize,
 }
 
+/// 节点信息结构体（用于避免生命周期问题）
+#[derive(Debug, Clone)]
+struct NodeInfo {
+    /// 播放顺序
+    pub play_order: u32,
+    /// 标题
+    pub title: String,
+    /// 源文件路径
+    pub src: String,
+}
+
 impl Display for TocStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
@@ -1126,8 +2032,8 @@ impl Display for TocStatistics {
 }
 
 /// 从NCX创建目录树
-pub fn create_toc_tree_from_ncx(ncx: &Ncx) -> TocTree {
-    let mut toc_tree = TocTree::new();
+pub fn create_toc_tree_from_ncx<'a>(ncx: &Ncx, epub: &'a Epub) -> TocTree<'a> {
+    let mut toc_tree = TocTree::new(epub);
     
     // 设置文档标题
     toc_tree.title = ncx.get_title().map(|t| t.clone());

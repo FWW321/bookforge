@@ -59,10 +59,6 @@ impl DocTitle {
 pub struct NavLabel {
     /// 标签文本
     pub text: String,
-    /// 音频文件（可选，主要用于DTB）
-    pub audio_src: Option<String>,
-    /// 图片文件（可选，主要用于DTB）
-    pub img_src: Option<String>,
 }
 
 impl NavLabel {
@@ -70,8 +66,6 @@ impl NavLabel {
     pub fn new(text: String) -> Self {
         Self {
             text,
-            audio_src: None,
-            img_src: None,
         }
     }
 }

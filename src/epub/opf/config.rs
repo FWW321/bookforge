@@ -5,7 +5,9 @@
 use crate::epub::error::{EpubError, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+
+/// 默认配置文件路径
+const DEFAULT_CONFIG_PATH: &str = "metadata.yaml";
 
 /// 单个元数据类型的标签配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,11 +67,9 @@ pub struct MetadataTagConfigs {
 }
 
 impl MetadataTagConfigs {
-    /// 从配置文件中加载元数据标签配置
+    /// 从默认配置文件中加载元数据标签配置
     /// 
-    /// # 参数
-    /// 
-    /// * `config_path` - 配置文件路径（支持.yaml和.yml格式）
+    /// 配置文件默认为当前目录下的 `metadata.yaml`
     /// 
     /// # 返回值
     /// 
@@ -79,22 +79,20 @@ impl MetadataTagConfigs {
     /// 
     /// ```rust
     /// use bookforge::epub::opf::MetadataTagConfigs;
-    /// let config = MetadataTagConfigs::from_file("metadata_tags.yaml")?;
+    /// let config = MetadataTagConfigs::from_file()?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn from_file<P: AsRef<Path>>(config_path: P) -> Result<Self> {
-        let content = fs::read_to_string(config_path)
+    pub fn from_file() -> Result<Self> {
+        let content = fs::read_to_string(DEFAULT_CONFIG_PATH)
             .map_err(|e| EpubError::ConfigError(format!("无法读取配置文件: {}", e)))?;
         
         serde_yml::from_str(&content)
             .map_err(|e| EpubError::ConfigError(format!("配置文件格式错误: {}", e)))
     }
 
-    /// 生成默认配置文件
+    /// 生成默认配置文件到当前目录
     /// 
-    /// # 参数
-    /// 
-    /// * `config_path` - 配置文件输出路径（建议使用.yaml扩展名）
+    /// 配置文件将生成为当前目录下的 `metadata.yaml`
     /// 
     /// # 返回值
     /// 
@@ -104,10 +102,10 @@ impl MetadataTagConfigs {
     /// 
     /// ```rust
     /// use bookforge::epub::opf::MetadataTagConfigs;
-    /// MetadataTagConfigs::generate_default_config("metadata_tags.yaml")?;
+    /// MetadataTagConfigs::generate_default_config()?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn generate_default_config<P: AsRef<Path>>(config_path: P) -> Result<()> {
+    pub fn generate_default_config() -> Result<()> {
         let default_config = Self::default_config();
         let yaml_content = serde_yml::to_string(&default_config)
             .map_err(|e| EpubError::ConfigError(format!("序列化配置失败: {}", e)))?;
@@ -118,7 +116,7 @@ impl MetadataTagConfigs {
             yaml_content
         );
         
-        fs::write(config_path, content_with_header)
+        fs::write(DEFAULT_CONFIG_PATH, content_with_header)
             .map_err(|e| EpubError::ConfigError(format!("写入配置文件失败: {}", e)))?;
         
         Ok(())
@@ -182,11 +180,9 @@ impl MetadataTagConfigs {
         }
     }
 
-    /// 尝试从配置文件加载，如果文件不存在则先生成配置文件再加载
+    /// 尝试从默认配置文件加载，如果文件不存在则先生成配置文件再加载
     /// 
-    /// # 参数
-    /// 
-    /// * `config_path` - 配置文件路径
+    /// 配置文件为当前目录下的 `metadata.yaml`
     /// 
     /// # 返回值
     /// 
@@ -196,15 +192,15 @@ impl MetadataTagConfigs {
     /// 
     /// ```rust
     /// use bookforge::epub::opf::MetadataTagConfigs;
-    /// let config = MetadataTagConfigs::load_or_default("metadata_tags.yaml");
+    /// let config = MetadataTagConfigs::new();
     /// ```
-    pub fn load_or_default<P: AsRef<Path>>(config_path: P) -> Self {
+    pub fn new() -> Self {
         // 首先尝试从文件加载
-        match Self::from_file(&config_path) {
+        match Self::from_file() {
             Ok(config) => config,
             Err(_) => {
                 // 如果文件不存在，先生成默认配置文件
-                let _ = Self::generate_default_config(&config_path);
+                let _ = Self::generate_default_config();
                 Self::default_config()
             }
         }

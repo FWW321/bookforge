@@ -11,7 +11,7 @@ pub struct ManifestItem {
     pub href: String,
     /// 媒体类型
     pub media_type: String,
-    /// 属性(如nav、cover-image等)
+    /// 属性(如nav、cover-image等) EPUB3
     pub properties: Option<String>,
 }
 

@@ -24,6 +24,9 @@ pub enum EpubError {
     #[error("XML解析错误: {0}")]
     XmlError(#[from] quick_xml::Error),
     
+    #[error("HTML解析错误: {0}")]
+    ParseError(String),
+    
     #[error("container.xml解析错误: {0}")]
     ContainerParseError(String),
     
@@ -35,4 +38,7 @@ pub enum EpubError {
     
     #[error("配置文件错误: {0}")]
     ConfigError(String),
+    
+    #[error("内部错误: {0}")]
+    InternalError(String),
 } 
