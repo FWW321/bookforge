@@ -22,7 +22,7 @@ pub use reader::{
 
 // 重新导出OPF相关
 pub use opf::{
-    Opf, 
+    Opf,
     Metadata, 
     Creator, 
     Identifier, 
